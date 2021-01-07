@@ -143,7 +143,7 @@ def main():
         df = _API_JQ.break_jq_limit_helper_finance(code=code)
         df["day"] = df["day"].apply(LB.switch_trade_date)
         df["day"] = df["day"].astype(int)
-        df = pd.merge(df_sh, df, how="left", left_on="trade_date", right_on="day", suffixes=["_sh", "_F"], sort="False")
+        df = pd.merge(df_sh, df, how="left", left_on="trade_date", right_on="day", suffixes=["_sh", "_F"], sort=False)
         if code == "INX":
             pass
             # df=df[df["day"]>20180101]

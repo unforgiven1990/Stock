@@ -156,6 +156,9 @@ def my_suspended(ts_code):
 def my_dividend(ts_code):
     return get(func=pro.dividend, fname="pro.dividend", kwargs=locals(), df_fallback=LB.df_empty("dividend"))
 
+def my_us_basic(ts_code=None,classify=None):
+    return get(func=pro.us_basic, fname="pro.us_basic", kwargs=locals())
+
 
 def my_forecast(ts_code):
     return get(func=pro.forecast, fname="pro.forecast", kwargs=locals(), df_fallback=LB.df_empty("forecast"))
@@ -182,10 +185,5 @@ def my_cn_m(start_m="00000000", end_m="99999999", fields='month,m0,m1,m2,m0_yoy,
 
 
 if __name__ == '__main__':
-    df = my_cn_m()
-    df = LB.df_reverse_reindex(df)
-    df["month"] = df["month"].astype(int)
-    df = df[df["month"] > 199001]
-    df["m1-m2"] = df["m1_yoy"] - df["m2_yoy"]
-
+    df = my_us_basic()
     df.to_csv("test.csv", encoding="utf-8_sig")

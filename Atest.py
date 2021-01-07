@@ -8,6 +8,7 @@ from scipy.stats.mstats import gmean
 from scipy.stats import gmean
 import sys
 import os
+import talib
 import matplotlib
 import itertools
 import matplotlib.pyplot as plt
@@ -1252,7 +1253,7 @@ def asset_fund_portfolio():
                 df_result[f"{year}_{season}_rank"]=df_result[f"{year}_{season}_count"].rank(ascending=False)
             else:
                 del df_result[f"{year}_{season}_rank"]
-            del df_result[f"{year}_{season}_count"]
+            #del df_result[f"{year}_{season}_count"]
 
     #save
     a_path = LB.a_path(f"Market/CN/ATest/fund_portfolio/all_time_statistic")
@@ -1314,19 +1315,19 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date=99
                 df_asset_freq["pct_change"] = 1 + df_asset_freq["close"].pct_change()
                 df_result.at[ts_code, f"{freq}_geomean"] = gmean(df_asset_freq["pct_change"].dropna())
 
-            #check how long a stock is abv ma 5,10,20,60,120,240
+            #check how long a stock is abv ma 20,60,120,240
             for freq in a_freq:
                 abvma_name=Alpha.abv_ma(df=df_asset,abase="close",freq=freq,inplace=True)
                 df_result.at[ts_code, f"abv_ma{freq}"]=df_asset[abvma_name].mean()
 
-            # technical freqhigh = ability to create 240d high
+            # technical freqhigh = ability to create 20d,60d,120d,240 high
             for freq in a_freq:
                 df_asset[f"rolling_max{freq}"] = df_asset["close"].rolling(freq).max()
                 df_helper = df_asset.loc[df_asset[f"rolling_max{freq}"] == df_asset["close"]]
                 df_asset[f"{freq}high"] = df_helper[f"rolling_max{freq}"]
                 df_result.at[ts_code, f"{freq}high"] = df_asset[f"{freq}high"].clip(0, 1).sum() / len(df_asset)
 
-            # technical freqlow = ability to avoid 240d low
+            # technical freqlow = ability to avoid 20d,60d,120d,240low
             for freq in a_freq:
                 df_asset[f"rolling_min{freq}"] = df_asset["close"].rolling(freq).min()
                 df_helper = df_asset.loc[df_asset[f"rolling_min{freq}"] == df_asset["close"]]
@@ -1420,11 +1421,14 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date=99
                     df_result.at[ts_code, "qdii_grade_pos(not counted)"] = len(df_qdii_grade[(df_qdii_grade["grade"] == "买入") | (df_qdii_grade["grade"] == "增持")]) / len(df_qdii_grade)
 
     # aggregate and rank
+    df_result["defensive_rank"] = builtins.sum([df_result[f"{freq}high"].rank(ascending=False) for freq in a_freq]) * 0.38 \
+                                + builtins.sum([df_result[f"{freq}low"].rank(ascending=True) for freq in a_freq]) * 0.62
+
 
     df_result["final_rank"]= builtins.sum([df_result[f"abv_ma{freq}"].rank(ascending=False) for freq in a_freq]) * 0.1 \
-                            + builtins.sum([df_result[f"{freq}_geomean"].rank(ascending=False) for freq in ["D","M","Y"]]) * 0.60 \
-                            + builtins.sum([df_result[f"{freq}high"].rank(ascending=False) for freq in a_freq]) * 0.15 \
-                            + builtins.sum( [df_result[f"{freq}low"].rank(ascending=True) for freq in a_freq] ) * 0.15
+                            + builtins.sum([df_result[f"{freq}_geomean"].rank(ascending=False) for freq in ["D","M","Y"]]) * 0.50 \
+                            + builtins.sum([df_result[f"{freq}high"].rank(ascending=False) for freq in a_freq]) * 0.4 * 0.38\
+                            + builtins.sum( [df_result[f"{freq}low"].rank(ascending=True) for freq in a_freq] ) * 0.4 * 0.62
 
     df_result["final_position"]=df_result["final_rank"].rank(ascending=True)
 
@@ -1433,6 +1437,235 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date=99
     DB.to_excel_with_static_data(df_ts_code=df_result, sort=["final_rank", True], path=f"Market/{market}/Atest/bullishness/bullishness_{market}_{start_date}_{end_date}.xlsx", group_result=True, market=market)
     return df_result
 
+
+def asset_bollinger(asset="E" , freq="D"):
+    """
+    Input: a group of good stocks
+    Output: on what scale are their bollinger bands
+
+
+    Idea: use bollinger to see if all stocks are too high or not
+    Idea: use bollinger to detect stocks that is low even if all stocks are high
+
+    :return:
+    """
+
+    #1 define input of stocks. Not more than 50
+    a_ts_code= [
+        '002821.SZ',
+        '603338.SH',
+        '603288.SH',
+        '603899.SH',
+        '601100.SH',
+        '000333.SZ',
+        '300529.SZ',
+        '002507.SZ',
+        '601012.SH',
+        '300357.SZ',
+        '002475.SZ',
+        '300347.SZ',
+        '300015.SZ',
+        '300122.SZ',
+        '002714.SZ',
+        '603939.SH',
+        '603737.SH',
+        '601888.SH',
+        '300124.SZ',
+        '002810.SZ',
+        '601799.SH',
+        '300308.SZ',
+        '300316.SZ',
+        '300225.SZ',
+        '603658.SH',
+        '603027.SH',
+        '002415.SZ',
+        '300285.SZ',
+        '002607.SZ',
+        '002311.SZ',
+        '600436.SH',
+        '603369.SH',
+        '600276.SH',
+        '300413.SZ',
+        '603520.SH',
+        '300142.SZ',
+        '002410.SZ',
+        '603806.SH',
+        '300136.SZ',
+        '002271.SZ',
+        '002597.SZ',
+        '002179.SZ',
+        '600519.SH',
+        '300496.SZ',
+        '002372.SZ',
+        '002791.SZ',
+        '002511.SZ',
+        '002508.SZ',
+        '002677.SZ',
+        '300551.SZ',
+        '300450.SZ',
+        '601155.SH',
+        '002032.SZ',
+        '300223.SZ',
+        '002690.SZ',
+        '300207.SZ',
+        '300395.SZ',
+        '300014.SZ',
+        '002371.SZ',
+        '002626.SZ',
+        '603866.SH',
+        '300012.SZ',
+        '601636.SH',
+        '600570.SH',
+        '603606.SH',
+        '002049.SZ',
+        '002236.SZ',
+        '600309.SH',
+        '300037.SZ',
+        '002007.SZ',
+        '600887.SH',
+        '002241.SZ',
+        '002409.SZ',
+        '601966.SH',
+        '002601.SZ',
+        '002262.SZ',
+        '600406.SH',
+        '300552.SZ',
+        '002142.SZ',
+        '300271.SZ',
+        '002460.SZ',
+        '002493.SZ',
+        '002001.SZ',
+        '002557.SZ',
+        '000538.SZ',
+        '603060.SH',
+        '300327.SZ',
+        '600340.SH',
+        '002439.SZ',
+        '300059.SZ',
+        '600426.SH',
+        '002138.SZ',
+        '300188.SZ',
+        '002456.SZ',
+        '603799.SH',
+        '603816.SH',
+        '000661.SZ',
+
+    ]
+
+    df_ts_code=DB.get_ts_code(a_asset=["E","I","FD"])
+    a_freqs=["D","W"]
+    d_result_freq={}
+
+    for freq in a_freqs:
+        #2. setup alginment with 3 index
+        df_sh=LB.df_to_freq(DB.get_asset(ts_code="000001.SH",asset="I"),freq=freq)
+        df_sz=LB.df_to_freq(DB.get_asset(ts_code="399001.SZ",asset="I"),freq=freq)
+        df_cy=LB.df_to_freq(DB.get_asset(ts_code="399006.SZ",asset="I"),freq=freq)
+        df_sh["000001.SH"]=df_sh["close"]
+        df_sh["399001.SZ"]=df_sz["close"]
+        df_sh["399006.SZ"]=df_cy["close"]
+
+        df_sh = df_sh[["period", "000001.SH","399001.SZ","399006.SZ"]]
+        d_preload = DB.preload(asset=asset, market="CN", d_queries_ts_code={asset: [f"ts_code in {a_ts_code}"]})
+
+
+        #1. align all ts code with sh index
+        for ts_code in a_ts_code:
+            print(f"bollinger for {freq} {ts_code}")
+            df_asset=LB.df_to_freq(d_preload[ts_code],freq=freq)
+            #close
+            df_sh[f"{ts_code}"]=df_asset["close"]
+
+            # bollinger
+            df_sh[f"{ts_code}_up"],df_sh[f"{ts_code}_mid"],df_sh[f"{ts_code}_low"]=talib.BBANDS(df_asset["close"], 20, 2, 2)
+
+            # scale to between 0 and 1
+            df_sh[f"{ts_code}_scale"]=(((1 - 0) * (df_sh[f"{ts_code}"] - df_sh[f"{ts_code}_low"])) / (df_sh[f"{ts_code}_up"] - df_sh[f"{ts_code}_low"])) + 0
+
+
+
+        df_stats = pd.DataFrame()
+        for ts_code in a_ts_code:
+            df_stats.at[ts_code,"name"]=df_ts_code.at[ts_code,"name"]
+            df_stats.at[ts_code,"period"]=len(d_preload[ts_code])
+
+            df_stats.at[ts_code, f"bollingerNOW"]=df_sh[f"{ts_code}_scale"].iat[-1]
+            for last_days in [20,60,240,500, "ALL"]:
+                df_sh_freq = df_sh.tail(last_days) if last_days != "ALL" else df_sh.copy()
+                df_stats.at[ts_code,f"bollinger{last_days}"]=df_sh_freq[f"{ts_code}_scale"].mean()
+                #df_stats.at[ts_code,f"geomean{last_days}"]=gmean(1 + df_sh_freq[ts_code].pct_change().dropna())
+
+        d_result_freq[freq]=df_stats
+        LB.to_csv_feather(df=df_stats, a_path=LB.a_path(f"Market/CN/ATest/bollinger/boll_stats_{freq}"))
+
+    df_final= pd.merge(d_result_freq["D"], d_result_freq["W"], how="left", left_on=["index","name","period"], right_on=["index","name","period"], suffixes=["_D", "_W"], sort=False)
+    LB.to_csv_feather(df=df_final, a_path=LB.a_path(f"Market/CN/ATest/bollinger/boll_stats_final"))
+
+
+def asset_portfolio_correlation():
+    """
+    Input: a group of good stocks
+    Output: Their pearson with 3 Index
+    Output: Matrix showing their correlation with each other, what is the best pair
+
+    Idea: use that to switch portfolio, when market is high, switch to less high funds.
+    REALITY: all stock have high market correlation. Past can not predict future, law of small number, even knowing past corr number, will not guarantee future correlation. So it is useless.
+
+
+    For now only support FD
+    :return:
+    """
+
+    #1 define input of stocks. Not more than 50
+    a_ts_code= [
+        "512600.SH",
+        "159928.SZ",
+        "163415.SZ",
+        "163402.SZ",
+        "163412.SZ",
+        "160133.SZ",
+        "169101.SZ",
+        "165516.SZ",
+        "169104.SZ",
+        "160916.SZ",
+    ]
+
+
+    #2. setup alginment with 3 index
+    df_sh=DB.get_asset(ts_code="000001.SH",asset="I")
+    df_sz=DB.get_asset(ts_code="399001.SZ",asset="I")
+    df_cy=DB.get_asset(ts_code="399006.SZ",asset="I")
+    df_sh["000001.SH"]=df_sh["close"]
+    df_sh["399001.SZ"]=df_sz["close"]
+    df_sh["399006.SZ"]=df_cy["close"]
+
+
+    df_sh_master = df_sh[["period", "000001.SH","399001.SZ","399006.SZ"]]
+    d_preload = DB.preload(asset="FD", market="CN", d_queries_ts_code={"FD": [f"ts_code in {a_ts_code}"]})
+
+
+    #calculate beta for last n days
+    for last_days in [20,60,240,500,"ALL"]:
+        df_corr = pd.DataFrame(index=["000001.SH", "399001.SZ", "399006.SZ"] + a_ts_code, columns=a_ts_code)
+        df_sh=df_sh_master.tail(last_days) if last_days!="ALL" else df_sh_master.copy()
+
+        #1. align all ts code with sh index
+        for ts_code in a_ts_code:
+            df_sh[f"{ts_code}"]=d_preload[ts_code]["close"]
+
+        #2. calculate beta between all stocks and index
+        for ts_code in a_ts_code:
+            for index_code in ["000001.SH","399001.SZ","399006.SZ"]:
+                #df_corr.at[index_code, ts_code] = LB.calculate_beta(df_sh[f"{index_code}_close"], df_sh[f"{ts_code}_close"])
+                df_corr.at[index_code, ts_code] = df_sh[index_code].corr(df_sh[ts_code], method="pearson")
+
+        #3. calculate beta between all stocks and all stocks
+        for ts_code1 in a_ts_code:
+            for ts_code2 in a_ts_code:
+                df_corr.at[ts_code1, ts_code2] = df_sh[ts_code1].corr(df_sh[ts_code2], method="pearson")
+
+        LB.to_csv_feather(df=df_corr,a_path=LB.a_path(f"Market/CN/ATest/portfolio_correlation/corr{last_days}"))
+    LB.to_csv_feather(df=df_sh, a_path=LB.a_path(f"Market/CN/ATest/portfolio_correlation/chart"))
 
 
 def asset_candlestick_analysis_once(ts_code, pattern, func):
@@ -1592,11 +1825,65 @@ def stop_rule():
 
     pass
 
+
+def new_bullishness(freq="W",asset="E"):
+    """this bullishness tries to find the stock by comparing their return each defined period.
+    1. For each period, we rank the stocks
+    2. In the end, we get the mean rank of all stocks
+
+
+    """
+
+    # 2. setup alginment with 3 index
+    df_ts_code=DB.get_ts_code(a_asset=[asset])
+    df_sh = DB.get_asset(ts_code="000001.SH", asset="I")
+    df_sz = DB.get_asset(ts_code="399001.SZ", asset="I")
+    df_cy = DB.get_asset(ts_code="399006.SZ", asset="I")
+    df_sh["000001.SH"] = df_sh["close"]
+    df_sh["399001.SZ"] = df_sz["close"]
+    df_sh["399006.SZ"] = df_cy["close"]
+
+    d_preload = DB.preload(asset=asset,step=1)
+
+    df_sh_Y = LB.df_to_freq(df_sh, freq)
+    df_sh["000001.SH"]=df_sh_Y["close"]
+    df_sh_Y = LB.df_to_freq(df_sz, freq)
+    df_sh["399001.SZ"] = df_sh_Y["close"]
+    df_sh_Y = LB.df_to_freq(df_cy, freq)
+    df_sh["399006.SZ"] = df_sh_Y["close"]
+    df_sh = df_sh[["000001.SH", "399001.SZ", "399006.SZ"]]
+    df_sh = df_sh[df_sh["000001.SH"].notna()]
+
+    for ts_code,df_asset in d_preload.items():
+        print(f"calculate for {ts_code}")
+        df_asset_Y= LB.df_to_freq(df_asset, freq)
+        df_sh[ts_code] = df_asset_Y["close"]
+
+
+    df_sh=df_sh.pct_change()
+
+
+    df_sh=df_sh.rank(axis=1,na_option="keep",pct=True,ascending=True)
+    df_summary = df_sh.mean()
+    df_summary = df_summary.to_frame()
+    df_summary.columns=[f"mean gain RANK per {freq}"]
+    for ts_code in df_summary.index:
+        if ts_code in ["000001.SH", "399001.SZ", "399006.SZ"]:
+            continue
+        df_summary.at[ts_code,"period"]=d_preload[ts_code]["period"].iat[-1]
+        df_summary.at[ts_code,"name"]=df_ts_code.at[ts_code,"name"]
+
+    LB.to_csv_feather(df=df_sh, a_path=LB.a_path(f"Market/CN/ATest/new_bull/data_{asset}_{freq}"),skip_feather=True)
+    LB.to_csv_feather(df=df_summary, a_path=LB.a_path(f"Market/CN/ATest/new_bull/df_summary_{asset}_{freq}"),skip_feather=True)
+
+
 if __name__ == '__main__':
     pr = cProfile.Profile()
     pr.enable()
-    asset_bullishness(a_asset=["E","FD","I","G"],step=1)
-
+    #new_bullishness()
+    asset_bollinger()
+    #asset_bullishness(a_asset=["E","FD"],step=1,market="CN")
+    #asset_fund_portfolio()
     # todo 1. remove sh_index correlation when using us stock, add industry, add us index, add polyfit error into bullishness
 
 

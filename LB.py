@@ -463,6 +463,8 @@ def c_d_groups(assets=c_assets(), a_ignore=[], market="CN"):
             a_columns = [x for x in df_ts_code_E.columns if x in ["sw_industry1", "sw_industry2", "sw_industry3", "zj_industry1", "jq_industry1", "jq_industry2", "area", "market", "is_hs", "state_company", "concept"]]
         elif market =="US":
             a_columns = [x for x in df_ts_code_E.columns if x in ["sector", "industry", "country"]]
+        elif market =="HK":
+            a_columns = [x for x in df_ts_code_E.columns if x in ["market"]]
 
         d_e = {}
         for column in a_columns:
@@ -479,6 +481,8 @@ def c_d_groups(assets=c_assets(), a_ignore=[], market="CN"):
             a_columns = [x for x in df_ts_code_I.columns if x in ["category", "publisher"] ]
         elif market == "US":
             a_columns = []
+        elif market == "HK":
+            a_columns = []
 
         d_i = {column:[x for x in list(df_ts_code_I[column].unique()) if x != None ]for column in a_columns}
 
@@ -489,6 +493,8 @@ def c_d_groups(assets=c_assets(), a_ignore=[], market="CN"):
             a_columns = [x for x in df_ts_code_FD.columns if x in ["fund_type", "invest_type", "type", "management", "custodian"]]
         elif market == "US":
             a_columns = [x for x in df_ts_code_FD.columns if x in ["sector", "industry", "country"]]
+        elif market == "HK":
+            a_columns = []
 
         d_fd = {column: [x for x in list(df_ts_code_FD[column].unique()) if x != None ]for column in a_columns}
 
@@ -941,6 +947,9 @@ def to_csv_feather(df, a_path, index_relevant=True, skip_feather=False, skip_csv
         df.reset_index(drop=(not index_relevant), inplace=True)  # reset index no matter what because feather can only store normal index. if index relevant then dont drop
     except Exception as e:
         print("small anomaly in saving csv feather")
+        print(e)
+
+
 
     df = df.infer_objects()
     if not skip_csv:

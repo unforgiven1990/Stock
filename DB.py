@@ -415,6 +415,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", step=1, night_shift=True
     def helper_EI(ts_code, freq, asset, start_date, end_date, adj="qfq", market="CN"):
         if ".SZ" in ts_code or ".SH" in ts_code:
             df = _API_Tushare.my_pro_bar(ts_code=ts_code, freq=freq, asset=asset, start_date=str(start_date), end_date=str(end_date), adj=adj)
+
         elif ".HK" in ts_code:
             df = _API_Tushare.my_hk_daily(ts_code=ts_code, start_date=str(start_date), end_date=str(end_date))
 
@@ -577,9 +578,11 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", step=1, night_shift=True
 
 
     #MAIN FUNCTION STARTS HERE
-    def run(df_ts_codes):
+    def run(df_ts_codes,freq):
         # iteratve over ts_code
         for ts_code in df_ts_codes.index[::step]:
+
+            print("start save ",ts_code)
             start_date, middle_date, end_date, complete_new_update, df_saved = ("00000000", "20050101", LB.today(), True, pd.DataFrame())  # True means update from 00000000 to today, False means update latest_trade_date to today
 
             ts_code = str(ts_code)
@@ -625,6 +628,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", step=1, night_shift=True
                 print(asset, ts_code, freq, end_date, "File Not exist. UPDATE!", real_latest_trade_date)
 
             # file not exist or not on latest_trade_date --> update
+
             if (asset == "E" and freq == "D"):
                 # 1.1 get df
                 if complete_new_update:
@@ -632,8 +636,10 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", step=1, night_shift=True
                     df2 = helper_EI(ts_code, freq, asset, middle_date, end_date, adj="hfq")
                     df = df1.append(df2, ignore_index=True, sort=False)
                     df = set_index_helper(df)
+                    print(ts_code,"complete new update")
                 else:
                     df = helper_EI(ts_code, freq, asset, asset_latest_trade_date, end_date, adj="hfq")
+                    print(ts_code, "NOT complete new update")
 
                 # only for CN
                 if market == "CN":
@@ -747,9 +753,8 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", step=1, night_shift=True
                 Alpha.period(df=df, inplace=True)
 
                 #add abvma for all stocks
-                for freq in [240]:
-                    df[f"abvma{freq}"]=Alpha.abv_ma(df=df, abase="close",inplace=False,freq=freq)
-
+                for d_freq in [240]:
+                    df[f"abvma{d_freq}"]=Alpha.abv_ma(df=df, abase="close",inplace=False,freq=d_freq)
 
             LB.to_csv_feather(df=df, a_path=a_path, skip_csv=False, skip_feather=True)  # save space using feather, but cannot be opened by html
             print(asset, ts_code, freq, end_date, "UPDATED!", real_latest_trade_date)
@@ -765,14 +770,18 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", step=1, night_shift=True
     real_latest_trade_date = get_last_trade_date(freq, market=market)
 
     # if index does not exist, update index first:
+
+
     d_index = preload(asset="I", d_queries_ts_code=LB.c_index_queries())
+
     if len(d_index) < 3:
         previousasset = asset
         asset = "I"
-        run(df_ts_codes=pd.DataFrame(index=LB.c_index(), data=LB.c_index()))
+        run(df_ts_codes=pd.DataFrame(index=LB.c_index(), data=LB.c_index()),freq=freq)
         asset = previousasset
 
-    run(df_ts_codes=df_ts_codes)
+    run(df_ts_codes=df_ts_codes,freq=freq)
+
 
 
 def update_asset_G(asset=["E"], night_shift=True, step=1):
@@ -1514,6 +1523,8 @@ def add_asset_comparison(df, freq, asset, ts_code, a_compare_label=["open", "hig
 def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=240, d_queries_ts_code={}, reset_index=False,market="CN"):
     """
     query_on_df: filters df_asset/df_date by some criteria. If the result is empty dataframe, it will NOT be included in d_result
+    {"I": [f"ts_code in {c_index(market=market)}"]}
+
     """
 
 
@@ -1530,7 +1541,8 @@ def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=
             if query_df:
                 df = df.query(expr=query_df) # "trade_date > 20050101"
             if asset in ["E", "I", "FD"]:  # not work for G, F
-                df = df[(df["period"] > period_abv)]
+                pass
+                #df = df[(df["period"] > period_abv)]
             if df.empty:
                 continue
             else:  # only take df that satisfy ALL conditions and is non empty
@@ -1554,7 +1566,6 @@ def update_all_in_one_us(night_shift=False):
     # ts_code
     for asset in ["I", "E", "FD"]:
         update_ts_code(asset=asset, market="US")
-
 
     #LB.multi_process(func=update_asset_US, a_kwargs={"asset": "E", }, a_partial=LB.multi_steps(2))  # big: smart decide - small: smart decide
     LB.multi_process(func=update_asset_US, a_kwargs={"asset": "FD", }, a_partial=LB.multi_steps(2))  # big: smart decide - small: smart decide
@@ -1649,8 +1660,9 @@ def update_all_in_one_cn_v2(night_shift=False, until=999):
     for asset in ["sw_industry1", "sw_industry2", "sw_industry3", "concept", ]:#"jq_industry1", "jq_industry2", "zj_industry1"
         if night_shift: update_ts_code(asset)  # SOMETIMES UPDATE
 
+
     # # 1.3. GENERAL - TS_CODE
-    for asset in ["I","E","G"]:#"F" sometimes bug
+    for asset in ["I","E","FD","G",]:#"F" sometimes bug
         update_ts_code(asset)  # ALWAYS UPDATE
 
     # # 1.5. GENERAL - TRADE_DATE (later than ts_code because it counts ts_codes)
@@ -1710,7 +1722,9 @@ if __name__ == '__main__':
         #update_all_in_one_us()
         #update_asset_stock_market_all()
 
-        update_all_in_one_cn_v2()
+        update_all_in_one_cn_v2(night_shift=True, until=1)
+        #update_all_in_one_hk()
+        #update_all_in_one_us()
 
 
 
