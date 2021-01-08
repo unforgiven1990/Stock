@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import talib
 import xlsxwriter
+import Atest
 import threading
 import smtplib
 from email.message import EmailMessage
@@ -40,30 +41,35 @@ def create_daily_report(with_db_update=False):
 
     # init
     d_df = {}
-    trade_date = DB.get_asset("000001.SH", asset="I").index[-1]
+    trade_date = LB.latest_trade_date()
     min_period=1200
-    top=0.05
+    top={"I":0.10,"FD":0.12,"E":0.05}
     tail = 500
     sortby={"I":"final_position","FD":"final_position","E":"defensive_rank"}
 
     #update if nessesary
     if with_db_update:
-        DB.update_all_in_one_cn_v2()
+        #DB.update_all_in_one_cn_v2()
+        Atest.asset_bullishness(a_asset=["E","FD","I"],step=1,market="CN")
+
 
     #read bullishness
     xls = pd.ExcelFile("Market/CN/ATest/bullishness/bullishness_CN_0_99999999.xlsx")
     df_bullishness_master= pd.read_excel(xls, sheet_name="Overview")
 
-
     #generate report
-    for asset in ["I","FD","E"]:
-        df_bullishness = df_bullishness_master[["ts_code","period", sortby[asset], "asset", "name", "market"]]
+    for asset in ["Market","I","FD","E"]:
+        df_bullishness = df_bullishness_master[["ts_code","period", "offensive_rank","defensive_rank","final_position", "asset", "name", "market"]] if asset!="Market" else df_bullishness_master[["ts_code","period",  "name", ]]
         df_bullishness.set_index("ts_code", drop=True, inplace=True)
 
         # Select best stocks and by rank
-        df_selected_assets=df_bullishness[(df_bullishness["asset"]==asset)&(df_bullishness["period"]>min_period)].sort_values(by=sortby[asset])
-        df_selected_assets=df_selected_assets.head(int(len(df_selected_assets)*top))
-        d_preload_E=DB.preload(asset=asset,d_queries_ts_code={asset: [f"ts_code in {df_selected_assets.index.to_list()}"]})
+        if asset =="Market":
+            df_selected_assets = df_bullishness.loc[["000001.SH","399006.SZ","399001.SZ"]]
+            d_preload_E = DB.preload(asset="I", d_queries_ts_code={"I": [f"ts_code in {df_selected_assets.index.to_list()}"]})
+        elif asset in ["I","FD","E"]:
+            df_selected_assets = df_bullishness[(df_bullishness["asset"] == asset) & (df_bullishness["period"] > min_period)].sort_values(by=sortby[asset])
+            df_selected_assets = df_selected_assets.head(int(len(df_selected_assets) * top[asset]))
+            d_preload_E=DB.preload(asset=asset,d_queries_ts_code={asset: [f"ts_code in {df_selected_assets.index.to_list()}"]})
 
         #load individual df_asset
         for ts_code,df_asset in d_preload_E.items():
@@ -73,27 +79,37 @@ def create_daily_report(with_db_update=False):
                     df_helper = df_asset.tail(freq)
                     df_selected_assets.at[ts_code, f"{column}_{freq}"] = (((1 - 0) * (df_helper[f"{column}"].iat[-1] - df_helper[f"{column}"].min())) / (df_helper[f"{column}"].max() - df_helper[f"{column}"].min())) + 0
 
+            # Bollinger NOW on D and on W
+            #calculate bollinger completely
+            for freq in ["D","W"]:
+                # transform to D or W
+                df_asset_freq = LB.df_to_freq(df_asset, freq=freq)
+
+                # bollinger
+                df_asset_freq[f"boll_up"], df_asset_freq[f"boll_mid"], df_asset_freq[f"boll_low"] = talib.BBANDS(df_asset_freq["close"], 20, 2, 2)
+
+                # scale to between 0 and 1
+                df_asset_freq[f"boll_scale"] = (((1 - 0) * (df_asset_freq["close"] - df_asset_freq[f"boll_low"])) / (df_asset_freq[f"boll_up"] - df_asset_freq[f"boll_low"])) + 0
+
+                # take the last sample as NOW
+                df_selected_assets.at[ts_code, f"boll_NOW{freq}"] = df_asset_freq[f"boll_scale"].iat[-1]
+
+
             # NOW vs historic PE and PB
             if asset == "E":
                 for column in ["pe_ttm", "pb"]:
                     df_selected_assets.at[ts_code, f"{column}_ALL"] = (((1 - 0) * (df_asset[f"{column}"].iat[-1] - df_asset[f"{column}"].min())) / (df_asset[f"{column}"].max() - df_asset[f"{column}"].min())) + 0
-
                     df_helper = df_asset.tail(tail)
                     df_selected_assets.at[ts_code, f"{column}_{tail}"] = (((1 - 0) * (df_helper[f"{column}"].iat[-1] - df_helper[f"{column}"].min())) / (df_helper[f"{column}"].max() - df_helper[f"{column}"].min())) + 0
 
-            # WHAT are their Bollinger?
-            # WHAT are their 60 MA?
         d_df[asset]=df_selected_assets
-
-
     LB.to_csv_feather(pd.DataFrame(),a_path=LB.a_path(f"Market/CN/Report/folder"))
     LB.to_excel(path=f"Market/CN/Report/report_{trade_date}.xlsx",d_df=d_df)
-
-
+    LB.file_open(f"D:\Stock/Market/CN/Report/report_{trade_date}.xlsx")
 
 
 
 
 if __name__ == '__main__':
-    #TODO: is does top happen with no volume or WITH high volume?
-    create_daily_report()
+    #TODO: when do stock revert? volume, time to previous date, ma, market, boll , supportresistance
+    create_daily_report(with_db_update=True)

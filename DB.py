@@ -1520,7 +1520,7 @@ def add_asset_comparison(df, freq, asset, ts_code, a_compare_label=["open", "hig
     return pd.merge(df, df_compare, how='left', on=["trade_date"], suffixes=["", ""], sort=False)
 
 
-def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=240, d_queries_ts_code={}, reset_index=False,market="CN"):
+def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=40, d_queries_ts_code={}, reset_index=False,market="CN"):
     """
     query_on_df: filters df_asset/df_date by some criteria. If the result is empty dataframe, it will NOT be included in d_result
     {"I": [f"ts_code in {c_index(market=market)}"]}
@@ -1541,8 +1541,7 @@ def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=
             if query_df:
                 df = df.query(expr=query_df) # "trade_date > 20050101"
             if asset in ["E", "I", "FD"]:  # not work for G, F
-                pass
-                #df = df[(df["period"] > period_abv)]
+                df = df[(df["period"] > period_abv)]
             if df.empty:
                 continue
             else:  # only take df that satisfy ALL conditions and is non empty

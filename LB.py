@@ -1201,6 +1201,10 @@ def combine_csv(path):
 def today():
     return str(datetime.now().date()).replace("-", "")
 
+def latest_trade_date():
+    import DB
+    df=DB.get_asset(ts_code="000001.SH",asset="I")
+    return df.index[-1]
 
 
 if __name__ == '__main__':
