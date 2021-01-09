@@ -1720,8 +1720,8 @@ if __name__ == '__main__':
         # update_all_in_one_us()
         #update_all_in_one_us()
         #update_asset_stock_market_all()
-
-        update_all_in_one_cn_v2(night_shift=True, until=1)
+        update_trade_date()
+        #update_all_in_one_cn_v2(night_shift=True, until=1)
         #update_all_in_one_hk()
         #update_all_in_one_us()
 

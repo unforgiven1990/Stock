@@ -172,6 +172,27 @@ def trade_date_to_calender(df,add=["year","season","month","day","weekofyear","d
     df["dayofweek"] =df["dayofweek"].replace("Thursday",4)
     df["dayofweek"] =df["dayofweek"].replace("Friday",5)
 
+    df["lastdayofmonth"]=False
+    df["lastdayofseason"] = False
+    df["lastdayofyear"] = False
+
+    for year in df["year"].unique():
+        df_year = df[df["year"] == year]
+        for month in range(1, 13):
+            last_season_day = df_year[df_year["month"] == month].last_valid_index()
+            if last_season_day is None:
+                continue
+
+            if month in [1,2,3,4,5,6,7,8,9,10,11,12]:
+                df.at[last_season_day, "lastdayofmonth"] = True
+
+            if month in [3,6,9,12]:
+                df.at[last_season_day, "lastdayofseason"] = True
+
+            if month in [12]:
+                df.at[last_season_day, "lastdayofyear"] = True
+
+
     #remove colums that are unwanted
     for col in ["index_copy","year","season","month","day","weekofyear","dayofweek"]:
         if col not in add:
@@ -618,88 +639,26 @@ def df_ts_code_index_to_market(df):
 def df_to_numeric(df):
     return df.select_dtypes(include=[np.number])
 
-
 def df_to_freq(df, freq):
-    def to_week(df):
-        """converts a df time series to another df containing only fridays"""
-        df_copy = df.copy()
-        df_copy["index_copy"] = df_copy.index
-        df_copy["weekday"] = df_copy["index_copy"].apply(lambda x: trade_date_to_dayofweek(x))  # can be way more efficient
-        df = df_copy[df_copy["weekday"] == "Friday"]
-        return timeseries_helper(df=df, a_index=list(df.index))
-
-    def to_month(df):
-        """converts a df time series to another df containing only the last day of month"""
-        df_copy = df.copy()
-        df_copy["index_copy"] = df_copy.index
-
-        #df_copy["year"] = df_copy["index_copy"].apply(lambda x: get_trade_date_datetime_y(x))  # can be way more efficient
-        #df_copy["month"] = df_copy["index_copy"].apply(lambda x: get_trade_date_datetime_m(x))  # can be way more efficient
-
-        df_copy["year"] = df_copy["index_copy"].astype(str).str.slice(0,4)
-        df_copy["month"] = df_copy["index_copy"].astype(str).str.slice(4,6)
-
-
-        a_index = []
-        for year in df_copy["year"].unique():
-            df_year = df_copy[df_copy["year"] == year]
-            for month in range(1, 13):
-                last_season_day = df_year[df_year["month"] == str(month)].last_valid_index()
-                if last_season_day is not None:
-                    a_index.append(last_season_day)
-        return timeseries_helper(df=df, a_index=a_index)
-
-    def to_season(df):
-        """converts a df time series to another df containing only the last day of season"""
-        df_copy = df.copy()
-        df_copy["index_copy"] = df_copy.index
-        #df_copy["year"] = df_copy["trade_date_copy"].apply(lambda x: get_trade_date_datetime_y(x))  # can be way more efficient
-        #df_copy["month"] = df_copy["trade_date_copy"].apply(lambda x: get_trade_date_datetime_m(x))  # can be way more efficient
-
-        df_copy["year"] = df_copy["index_copy"].astype(str).str.slice(0, 4)
-        df_copy["month"] = df_copy["index_copy"].astype(str).str.slice(4, 6)
-
-        a_index = []
-        for year in df_copy["year"].unique():
-            df_year = df_copy[df_copy["year"] == year]
-            for month in [3, 6, 9, 12]:
-                last_season_day = df_year[df_year["month"] == str(month)].last_valid_index()
-                if last_season_day is not None:
-                    a_index.append(last_season_day)
-        return timeseries_helper(df=df, a_index=a_index)
-
-    def to_year(df):
-        """converts a df time series to another df containing only the last day of month"""
-        df_copy = df.copy()
-        df_copy["index_copy"] = df_copy.index
-        #df_copy["year"] = df_copy["index_copy"].apply(lambda x: get_trade_date_datetime_y(x))  # can be way more efficient
-        df_copy["year"] = df_copy["index_copy"].astype(str).str.slice(0, 4)
-
-
-        a_index = []
-        for year in df_copy["year"].unique():
-            last_year_day = df_copy[df_copy["year"] == year].last_valid_index()
-            a_index.append(last_year_day)
-        return timeseries_helper(df=df, a_index=a_index)
-
-    def timeseries_helper(df, a_index):
-        """converts index to time series and cleans up. Return only ohlc and pct_chg"""
-        df_result = df.loc[a_index]
-        df_result = df_ohlcpp(df_result)
-        df_result["pct_chg"] = df_result["close"].pct_change() * 100
-        return df_result
+    import DB
+    df_trade_date=DB.get_trade_date()
+    df_trade_date["close"]=df["close"]
+    df_trade_date["period"]=df["period"]
 
     if freq=="D":
-        return df
+        df= df_trade_date
     elif freq=="W":
-        return to_week(df)
+        df= df_trade_date[df_trade_date["dayofweek"]==5]
     elif freq=="M":
-        return to_month(df)
+        df = df_trade_date[df_trade_date["lastdayofmonth"] == True]
     elif freq=="S":
-        return to_season(df)
+        df = df_trade_date[df_trade_date["lastdayofseason"] == True]
     elif freq=="Y":
-        return to_year(df)
+        df = df_trade_date[df_trade_date["lastdayofyear"] == True]
 
+    df=df[df["close"].notna()]
+    df["pct_chg"] = df["close"].pct_change() * 100
+    return df[["period","close","pct_chg"]]
 
 def df_empty(query):
     if query == "pro_bar":
@@ -1208,7 +1167,11 @@ def latest_trade_date():
 
 
 if __name__ == '__main__':
-    pass
+    import DB
+    df=DB.get_asset()
+    for freq in ["D","W","M","S","Y"]:
+        df_freq=df_to_freq(df=df,freq=freq)
+        df_freq.to_csv(f"{freq}.csv")
 
 
 
