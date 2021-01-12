@@ -825,7 +825,16 @@ def fibonacci_weight(n):
 
 
 
-def multi_process(func, a_kwargs, a_partial=[]):
+def multi_process(func, a_kwargs, splitin=8):
+    a_process = []
+    for i in range(splitin):
+        new_dict = a_kwargs.copy()  # maybe deepcopy
+        new_dict.update({"offset":i,"step":splitin})
+        a_process.append(Process(target=func, kwargs=new_dict))
+    [process.start() for process in a_process]
+    [process.join() for process in a_process]
+
+def multi_process_backup(func, a_kwargs, a_partial=[]):
     a_process = []
     for d_partial in a_partial:
         new_dict = a_kwargs.copy()  # maybe deepcopy
@@ -833,6 +842,7 @@ def multi_process(func, a_kwargs, a_partial=[]):
         a_process.append(Process(target=func, kwargs=new_dict))
     [process.start() for process in a_process]
     [process.join() for process in a_process]
+
 
 
 def multi_steps(step=1):
@@ -929,12 +939,21 @@ def to_csv_feather(df, a_path, index_relevant=True, skip_feather=False, skip_csv
 
 
 
-def to_excel(path, d_df, index=True):
+def to_excel(path, d_df, index=True,color=True):
+    a_columns=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]
     for i in range(0, 10):
         try:
             writer = pd.ExcelWriter(path, engine="xlsxwriter")
             for key, df in d_df.items():
                 df.to_excel(writer, sheet_name=key, index=index, encoding='utf-8_sig')
+                if color:
+                    worksheet = writer.sheets[key]
+                    for column,excel_col,counter in zip(df.columns,a_columns,[x for x in range(999)]):
+                        if counter%2==0:
+                            worksheet.conditional_format(f'{excel_col}1:{excel_col}{len(df) + 1}', {'type': '2_color_scale'})
+                        else:
+                            worksheet.conditional_format(f'{excel_col}1:{excel_col}{len(df) + 1}', {'type': '3_color_scale'})
+
             writer.save()
             break
         except Exception as e:
@@ -1160,19 +1179,27 @@ def combine_csv(path):
 def today():
     return str(datetime.now().date()).replace("-", "")
 
-def latest_trade_date():
+def latest_trade_date(market="CN"):
     import DB
-    df=DB.get_asset(ts_code="000001.SH",asset="I")
-    return df.index[-1]
+    #select 10 random stocks and check their biggest date
+    df_ts_code = DB.get_ts_code(a_asset=["E"],market=market)
+    trade_date_max = 00000000
+    for ts_code in df_ts_code.index[:20]:
+        df_asset=DB.get_asset(ts_code=ts_code,market=market,asset="E")
+        asset_latest_trade_date=df_asset.index[-1]
+        if trade_date_max<asset_latest_trade_date:
+            trade_date_max=asset_latest_trade_date
+    return trade_date_max
+
 
 
 if __name__ == '__main__':
     import DB
-    df=DB.get_asset()
-    for freq in ["D","W","M","S","Y"]:
-        df_freq=df_to_freq(df=df,freq=freq)
-        df_freq.to_csv(f"{freq}.csv")
 
+    a=[x for x in range(100)]
+
+    for i in range(6):
+        print(a[0::6])
 
 
 else:  # IMPORTANT TO KEEP FOR SOUND AND TIME
