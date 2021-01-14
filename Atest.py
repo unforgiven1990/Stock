@@ -1287,8 +1287,8 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
 
         try:
             df_asset = DB.get_asset(ts_code=ts_code, asset=asset, market=market)
-            df_result.at[ts_code, "period"] =lenofdf= len(df_asset)
             df_asset=df_asset[(df_asset.index > start_date)&(df_asset.index <= end_date)&(df_asset["period"] > 40)]
+            df_result.at[ts_code, "period"] = lenofdf = len(df_asset)
         except:
             continue
 
@@ -1306,23 +1306,58 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
                 low, high = df_asset_freq["pct_chg"].quantile([0, 1 - extrem_pct])
                 d_asset_freq[freq] = df_asset_freq[df_asset_freq["pct_chg"].between(low, high)]
 """
-            # PCT_CHG std: (If two stock have same gmean, which one is more volatile?)
+
+            """INFO are just for information, not used for ranking"""
+            # INFO pgain, fgain
+            for column in ["pgain","fgain"]:
+                for freq in [5,20,60,240]:
+                    try:
+                        df_result.at[ts_code, f"{column}{freq}"]=df_asset[f"{column}{freq}"].iat[-1]
+                    except:
+                        df_result.at[ts_code, f"{column}{freq}"]= np.nan
+
+            # INFO PE, PB, Close ASP
+            if market =="CN":
+                for column in ["pe_ttm","pb","close","total_mv"]:
+                    try:
+                        df_result.at[ts_code, f"{column}"] = df_asset[column].iat[-1]
+                    except:
+                        df_result.at[ts_code, f"{column}"] =np.nan
+                # INFO PE, PB, vs past
+
+                for column in ["pe_ttm","pb"]:
+                    try:
+                        df_result.at[ts_code, f"{column}_ALL"] = (df_asset[f"{column}"].iat[-1] >= df_asset[f"{column}"]).astype(int).mean()
+                    except:
+                        df_result.at[ts_code, f"{column}_ALL"] =np.nan
+
+
+            # INFO beta, lower the better TODO make beta for HK stock align with hk index
+            for ts_code_index, df_index in d_preload_index.items():
+                df_index[ts_code] = df_asset["close"]
+                df_index_notna = df_index
+                # df_index_notna = df_index[df_index[ts_code].notna()]
+                df_result.at[ts_code, f"{ts_code_index}_beta"] = df_index_notna["close"].corr(df_index_notna[ts_code])
+
+            # INFO PCT_CHG std: (If two stock have same gmean, which one is more volatile?)
             for freq, df_asset_freq in d_asset_freq.items():
                 df_asset_freq["pct_change"] = 1 + df_asset_freq["close"].pct_change()
                 df_result.at[ts_code, f"{freq}_std"] = df_asset_freq["pct_change"].std()
 
-            # Geomean: implcitly reward stock with high monotony and punish stock with high volatilty.
+
+            """RANK are used for ranking"""
+            # RANK Geomean: implcitly reward stock with high monotony and punish stock with high volatilty.
             for freq, df_asset_freq in d_asset_freq.items():
                 df_result.at[ts_code, f"{freq}_geomean"] = gmean(df_asset_freq["pct_change"].dropna())
 
-            # technical freqhigh = ability to create 20d,60d,120d,240high
+            # RANK technical freqhigh = ability to create 20d,60d,120d,240high
             for freq in a_freq:
                 df_asset[f"rolling_max{freq}"] = df_asset["close"].rolling(freq).max()
                 df_helper = df_asset.loc[df_asset[f"rolling_max{freq}"] == df_asset["close"]]
                 df_asset[f"{freq}high"] = df_helper[f"rolling_max{freq}"]
                 df_result.at[ts_code, f"{freq}high"] = df_asset[f"{freq}high"].clip(0, 1).sum() / len(df_asset)
 
-            # technical freqlow = ability to avoid 20d,60d,120d,240low
+            # RANK technical freqlow = ability to avoid 20d,60d,120d,240low
             for freq in a_freq:
                 df_asset[f"rolling_min{freq}"] = df_asset["close"].rolling(freq).min()
                 df_helper = df_asset.loc[df_asset[f"rolling_min{freq}"] == df_asset["close"]]
@@ -1330,7 +1365,7 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
                 df_result.at[ts_code, f"{freq}low"] = df_asset[f"{freq}low"].clip(0, 1).sum() / len(df_asset)
 
 
-            #  check how long a stock is abv ma 20,60,120,240
+            # RANK check how long a stock is abv ma 20,60,120,240
             for freq in a_freq:
                 abvma_name=Alpha.abv_ma(df=df_asset,abase="close",freq=freq,inplace=True)
                 df_result.at[ts_code, f"abv_ma{freq}"]=df_asset[abvma_name].mean()
@@ -1358,36 +1393,33 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
             df_result.at[ts_code, "highpass_mean"] = highpass_mean
             """
 
-            # beta, lower the better TODO make beta for HK stock align with hk index
-            for ts_code_index, df_index in d_preload_index.items():
-                df_index[ts_code]=df_asset["close"]
-                df_index_notna=df_index
-                #df_index_notna = df_index[df_index[ts_code].notna()]
-                df_result.at[ts_code, f"{ts_code_index}_beta"] = df_index_notna["close"].corr(df_index_notna[ts_code])
 
 
             # dividend
             if asset == "E" and market == "CN":
-                if "dv_ttm" in df_asset.columns:
-                    df_result.at[ts_code, "dividend(not counted)"] = df_asset["dv_ttm"].mean()
 
                 # qdii research
                 df_qdii_research = DB.get_asset(ts_code=ts_code, freq="qdii_research", market="CN")
                 df_qdii_research=df_qdii_research[df_qdii_research.index <= str(end_date)]
                 if not df_qdii_research.empty:
-                    df_result.at[ts_code, "qdii_research(not counted)"] = len(df_qdii_research)
+                    df_result.at[ts_code, "qdii_research"] = len(df_qdii_research)
                     df_result.at[ts_code, "qdii_research/period"] = len(df_qdii_research) / len(df_asset)
 
                 # qdii grade
                 df_qdii_grade = DB.get_asset(ts_code=ts_code, freq="qdii_grade", market="CN")
                 df_qdii_grade = df_qdii_grade[df_qdii_grade.index <= str(end_date)]
                 if not df_qdii_grade.empty:
-                    df_result.at[ts_code, "qdii_grade(not counted)"] = len(df_qdii_grade)
+                    df_result.at[ts_code, "qdii_grade"] = len(df_qdii_grade)
                     df_result.at[ts_code, "qdii_grade/period"] = len(df_qdii_grade) / len(df_asset)
-                    df_result.at[ts_code, "qdii_grade_pos(not counted)"] = len(df_qdii_grade[(df_qdii_grade["grade"] == "买入") | (df_qdii_grade["grade"] == "增持")]) / len(df_qdii_grade)
 
-    # beta rank = ability to be independent from market
-    df_result["beta_score"] = abs(df_result[f"000001.SH_beta"]*df_result[f"399006.SZ_beta"]*df_result[f"399001.SZ_beta"])
+
+    """RANK ALL STUFF"""
+    # qdii rank = ability to be independent from market
+    try:
+        df_result["qdii_rank"] = df_result[f"qdii_research/period"] + df_result[f"qdii_grade/period"]
+        df_result["qdii_rank"] = df_result["qdii_rank"].rank(ascending=False)
+    except:
+        df_result["qdii_rank"] = np.nan
 
 
     # offensive rank = ability to gain high return, no mater how the path is. Monotony and std is implicitly ranked here.
@@ -1402,19 +1434,16 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
 
 
     # combine using Arithmetic mean
-    df_result["allround_rank_ari"] =  df_result["offensive_rank"]*0.38 \
+    """df_result["allround_rank_ari"] =  df_result["offensive_rank"]*0.38 \
                                     + df_result["defensive_rank"]*0.62
     df_result["allround_rank_ari"] = df_result["allround_rank_ari"].rank(ascending=True)
-
+    """
 
     # combine using Geometric mean
     df_result["allround_rank_geo"] =   (len(df_result) - df_result["offensive_rank"]) \
                                      * (len(df_result) - df_result["defensive_rank"]) \
                                      * (len(df_result) - df_result["defensive_rank"])
     df_result["allround_rank_geo"] = df_result["allround_rank_geo"].rank(ascending=False)
-
-
-    #df_result["final_position"]=df_result["allround_rank_geo"].rank(ascending=False)
 
 
     df_result.to_csv(f"Market/{market}/Atest/bullishness/bullishness_{market}_{start_date}_{end_date}_{a_asset}.csv", encoding='utf-8_sig')

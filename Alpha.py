@@ -134,6 +134,7 @@ def ivola(df, inplace, name, cols):
 """Point: custom generic vector functions """
 
 
+
 # past n days until today. including today
 # pct_chg always +1
 @alpha_wrap

@@ -940,7 +940,7 @@ def to_csv_feather(df, a_path, index_relevant=True, skip_feather=False, skip_csv
 
 
 def to_excel(path, d_df, index=True,color=True):
-    a_columns=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]
+    a_columns=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]+["A"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]
     for i in range(0, 10):
         try:
             writer = pd.ExcelWriter(path, engine="xlsxwriter")
@@ -1196,10 +1196,10 @@ def latest_trade_date(market="CN"):
 if __name__ == '__main__':
     import DB
 
-    a=[x for x in range(100)]
+    a=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]+["A"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]
 
-    for i in range(6):
-        print(a[0::6])
+    for i in a:
+        print(i)
 
 
 else:  # IMPORTANT TO KEEP FOR SOUND AND TIME

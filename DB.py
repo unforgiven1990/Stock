@@ -11,6 +11,8 @@ from tqdm import tqdm
 import traceback
 import Alpha
 import datetime
+import talib
+
 
 pd.options.mode.chained_assignment = None  # default='warn'
 
@@ -605,15 +607,15 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     asset_latest_trade_date = str(df_saved.index[-1])
                 except:
                     asset_latest_trade_date = start_date
-                    print(asset, ts_code, freq, end_date, "EMPTY - START UPDATE", asset_latest_trade_date, " to today")
+                    print(offset , asset, ts_code, freq, end_date, "EMPTY - START UPDATE", asset_latest_trade_date, " to today")
 
                 # file exist and on latest date--> finish, else update
                 if (int(asset_latest_trade_date) == int(real_latest_trade_date)):
-                    print(asset, ts_code, freq, end_date, "Up-to-date", real_latest_trade_date)
+                    print(offset ,asset, ts_code, freq, end_date, "Up-to-date", real_latest_trade_date)
                     continue
                 else:  # file exists and not on latest date
                     # file exists and not on latest date, AND stock trades--> update
-                    print(asset, ts_code, freq, end_date, "Exist but not on latest date", real_latest_trade_date)
+                    print(offset ,asset, ts_code, freq, end_date, "Exist but not on latest date", real_latest_trade_date)
 
                     #NORMALLY: USE OLD WAY TO UPDATE ONLY LAST FEW ROWS
                     #NEW WAY: STILL DO COMPLETE NEW UPDATE IF LAST DATE IS NOT CORRECT
@@ -624,7 +626,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     #complete_new_update = False #old way
 
             else:
-                print(asset, ts_code, freq, end_date, "File Not exist. UPDATE!", real_latest_trade_date)
+                print(offset ,asset, ts_code, freq, end_date, "File Not exist. UPDATE!", real_latest_trade_date)
 
             # file not exist or not on latest_trade_date --> update
 
@@ -635,17 +637,17 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     df2 = helper_EI(ts_code, freq, asset, middle_date, end_date, adj="hfq")
                     df = df1.append(df2, ignore_index=True, sort=False)
                     df = set_index_helper(df)
-                    print(ts_code,"complete new update")
+                    print(offset ,ts_code,"complete new update")
                 else:
                     df = helper_EI(ts_code, freq, asset, asset_latest_trade_date, end_date, adj="hfq")
-                    print(ts_code, "NOT complete new update")
+                    print(offset ,ts_code, "NOT complete new update")
 
                 # only for CN
                 if market == "CN":
                     # 1.2 get adj factor because tushare is too dump to calculate it on its own
                     df_adj = _API_Tushare.my_query(api_name='adj_factor', ts_code=ts_code, start_date=start_date, end_date=end_date)
                     if df_adj.empty:
-                        print(asset, ts_code, freq, start_date, end_date, "has no adj_factor yet. skipp")
+                        print(offset ,asset, ts_code, freq, start_date, end_date, "has no adj_factor yet. skipp")
                     else:
                         latest_adj = df_adj.at[0, "adj_factor"]
                         df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]] / latest_adj
@@ -659,7 +661,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                         df_fun = _API_Tushare.my_query(api_name="daily_basic", ts_code=ts_code, start_date=asset_latest_trade_date, end_date=end_date)
 
                     try:  # new stock can cause error here
-                        df_fun = df_fun[["trade_date", "turnover_rate", "pe_ttm", "pb", "ps_ttm", "dv_ttm", "total_share", "total_mv"]]
+                        df_fun = df_fun[["trade_date", "turnover_rate", "pe_ttm", "pb", "total_share", "total_mv"]]
                         df_fun["total_share"] = df_fun["total_share"] * 10000
                         df_fun["total_mv"] = df_fun["total_mv"] * 10000
                         df_fun["trade_date"] = df_fun["trade_date"].astype(int)
@@ -748,15 +750,29 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                 update_asset_point(df=df, asset=asset)
                 update_asset_re(df=df, asset=asset)
             else:
-                #add period for all stocks
+                # remove open high low to save space
+                df=df[[x for x in df.columns if x not in ["open","high","low"]]]
+
+                # add period for all stocks
                 Alpha.period(df=df, inplace=True)
 
-                #add abvma for all stocks
-                for d_freq in [240]:
-                    df[f"abvma{d_freq}"]=Alpha.abv_ma(df=df, abase="close",inplace=False,freq=d_freq)
+                # close pgain fgain
+                for freqn in [5,  20, 60, 240]:
+                    df[f"pgain{freqn}"]=Alpha.pgain(df=df, abase="close", freq=freqn, inplace=False)  # past gain includes today = today +yesterday comp_gain
+                for freqn in [5,  20, 60, 240]:
+                    df[f"fgain{freqn}"]=Alpha.fgain(df=df, abase="close", freq=freqn, inplace=False)
+
+                # bollinger scale to between 0 and 1
+                try:
+                    df[f"boll_up"], egal, df[f"boll_low"] = talib.BBANDS(df["close"], 20, 2, 2)
+                    df[f"boll"] = (((1 - 0) * (df["close"] - df[f"boll_low"])) / (df[f"boll_up"] - df[f"boll_low"])) + 0
+                except:
+                    df[f"boll_up"]=np.nan
+                    df[f"boll_low"]=np.nan
+                    df[f"boll"]=np.nan
 
             LB.to_csv_feather(df=df, a_path=a_path, skip_csv=False, skip_feather=True)  # save space using feather, but cannot be opened by html
-            print(asset, ts_code, freq, end_date, "UPDATED!", real_latest_trade_date)
+            print(offset ,asset, ts_code, freq, end_date, "UPDATED!", real_latest_trade_date)
             print("=" * 50)
             print()
 
@@ -767,17 +783,22 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
 
     # TODO needs to adjusted for other markets like hk and us
     real_latest_trade_date = get_last_trade_date(freq, market=market)
-
+    print("lareal_latest_trade_date",real_latest_trade_date)
     # if index does not exist, update index first:
 
+    if True:
+        previousasset = asset
+        asset = "I"
+        run(df_ts_codes=pd.DataFrame(index=LB.c_index(), data=LB.c_index()), freq=freq)
+        asset = previousasset
 
-    d_index = preload(asset="I", d_queries_ts_code=LB.c_index_queries())
+    """d_index = preload(asset="I", d_queries_ts_code=LB.c_index_queries())
 
     if len(d_index) < 3:
         previousasset = asset
         asset = "I"
         run(df_ts_codes=pd.DataFrame(index=LB.c_index(), data=LB.c_index()),freq=freq)
-        asset = previousasset
+        asset = previousasset"""
 
     run(df_ts_codes=df_ts_codes,freq=freq)
 
@@ -1050,8 +1071,9 @@ def update_asset_bundle(bundle_name, bundle_func, market="CN", night_shift=True,
 
 
 def update_asset_qdii():
-    _API_Scrapy.qdii_research()
-    _API_Scrapy.qdii_grade()
+    #_API_Scrapy.qdii_research()
+    #LB.multi_process(func=_API_Scrapy.qdii_grade,a_kwargs={"qdii":"grade"},splitin=2)
+    LB.multi_process(func=_API_Scrapy.qdii_grade,a_kwargs={"qdii":"research"},splitin=2)
 
 
 def update_asset_xueqiu(asset="E", market="CN"):
@@ -1332,7 +1354,7 @@ def get(a_path=[], set_index=""):  # read feather first
             pass
             #print(f"{func.__name__} error. now try", e)
     else:
-        print("DB READ File Not Exist!", f"{a_path[0]}.feather or {a_path[1]}.csv")
+        print("DB READ File Not Exist or set index wrong!", f"{a_path[0]} or {a_path[1]}")
         return pd.DataFrame()
 
 def get_trade_cal_D(start_date="00000000", end_date="30000000", a_is_open=[1], market="CN"):
@@ -1670,9 +1692,9 @@ def update_all_in_one_cn_v2(night_shift=False, until=999):
 
     # 2.2. ASSET
     for asset in ["I","E","FD"]:
-        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=10)  # 40 mins
+        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=8)  # 40 mins
     update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
-
+    update_asset_qdii()#tooslow
 
     if until <= 3:
         return print(f"update_all_in_one_cn2 finished until {until}")
@@ -1717,8 +1739,8 @@ if __name__ == '__main__':
         # update_all_in_one_us()
         #update_all_in_one_us()
         #update_asset_stock_market_all()
-        update_trade_date()
-        #update_all_in_one_cn_v2(night_shift=True, until=1)
+        update_asset_qdii()
+        #update_all_in_one_cn_v2()
         #update_all_in_one_hk()
         #update_all_in_one_us()
 
