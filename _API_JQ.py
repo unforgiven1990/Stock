@@ -7,7 +7,7 @@ import pandas as pd
 for i in range(10):
     try:
         pass
-        #auth('13817373362', '373362')
+        auth('13817373362', '373362')
     except:
         pass
 
@@ -154,6 +154,12 @@ def my_get_industries(name="zjw"):
 
 def my_get_industry_stocks(industry_code):
     return get(func=get_industry_stocks,fname="get_industry_stocks",kwargs={"industry_code":industry_code})
+
+def my_get_price_5min(security, start_date, end_date, frequency="5m"):
+    start_date = f"{start_date[0:4]}-{start_date[4:6]}-{start_date[6:8]} 09:00:00"
+    end_date = f"{end_date[0:4]}-{end_date[4:6]}-{end_date[6:8]} 15:00:00"
+    return get(func=get_price,fname="get_price",kwargs=locals())
+
 
 
 if __name__ == '__main__':

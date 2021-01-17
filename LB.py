@@ -920,8 +920,11 @@ def to_csv_feather(df, a_path, index_relevant=True, skip_feather=False, skip_csv
         print(e)
 
 
+    try:#fails sometimes on JQ data df
+        df = df.infer_objects()
+    except:
+        pass
 
-    df = df.infer_objects()
     if not skip_csv:
         for _ in range(10):
             try:

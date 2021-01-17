@@ -65,7 +65,7 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
     # 1. update DB if nessesary
     if update_DB:
         if market == "CN":
-            DB.update_all_in_one_cn_v2()
+            DB.update_all_in_one_cn()
         if market == "HK":
             DB.update_all_in_one_hk()
 
@@ -236,12 +236,12 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
 if __name__ == '__main__':
     #TODO: when do stock revert? volume, time to previous date, ma, market, boll , supportresistance
     import Alpha
-    do=2
+    do=1
 
 
     if do==1:
         for market in ["CN"]:
-            create_daily_report(update_DB=False,market=market)
+            create_daily_report(update_DB=True,market=market)
 
 
 
