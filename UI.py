@@ -104,7 +104,8 @@ def plot_polynomials(df):
 
 
 def plot_histo(series):
-    plt.hist(series)  # use this to draw histogram of your data
+    plt.hist(series,rwidth=0.9)  # use this to draw histogram of your data
+    plt.axis('off')
     plt.show()
 
 def plot_distribution(df, abase="close",rfreq=10):

@@ -1196,7 +1196,7 @@ def all(withupdate=False):
     """
 
     # 0: UPDATE DATA and INIT
-    if withupdate: DB.update_all_in_one_cn_v2(night_shift=True)
+    if withupdate: DB.update_all_in_one_cn(night_shift=True)
     df_result = DB.get_stock_market_overview()
     df_result["sh_volatility"] = Alpha.detect_cycle(df=df_result, abase=f"close_sh", inplace=False)  # use sh index to calculate volatility no matter what
     df_result["cy_trend"] = Alpha.detect_bull(df=df_result, abase=f"close_cy", inplace=False)  # use cy index to detect macro trends

@@ -51,7 +51,7 @@ def qdii_research():
 
 
 
-def qdii_grade(offset=0,step=1, qdii="grade"):
+def qdii(offset=0, step=1, qdii="grade"):
     """券商评估 from sina finance
     direct pandas method
     """

@@ -183,7 +183,16 @@ def my_concept_detail(id="", ts_code="", fields="id,concept_name,ts_code,name,in
 def my_cn_m(start_m="00000000", end_m="99999999", fields='month,m0,m1,m2,m0_yoy,m1_yoy,m2_yoy', ):
     return get(func=pro.cn_m, fname="pro.cn_m", kwargs=locals())
 
+def my_hsgt(start_date="00000000",end_date="99999999"):
+    return get(func=pro.moneyflow_hsgt, fname="pro.moneyflow_hsgt", kwargs=locals())
+
+def my_hk_hold(ts_code):
+    return get(func=pro.hk_hold, fname="pro.hk_hold", kwargs=locals())
+
 
 if __name__ == '__main__':
-    df = my_us_basic()
-    df.to_csv("test.csv", encoding="utf-8_sig")
+    import DB
+    ts_code = "600887.SH"
+    df=DB.tushare_limit_breaker(pro.hk_hold, {"ts_code":ts_code,"start_date":"20180101"}, limit=1000)
+    df=LB.df_reverse_reindex(df)
+    df.to_csv(f"{ts_code}.csv", encoding="utf-8_sig")

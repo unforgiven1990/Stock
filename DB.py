@@ -1056,6 +1056,7 @@ def update_asset_bundle(bundle_name, bundle_func, market="CN", night_shift=True,
     """updates other information from tushare such as blocktrade,sharefloat
     check out LB.c_asset_E_bundle() for more
     """
+    #TODO later use DB.tushare_limit_breaker
     df_ts_code = get_ts_code(a_asset=a_asset, market=market)
     for ts_code in df_ts_code.index[offset::step]:
         a_path = LB.a_path(f"Market/{market}/Asset/{a_asset[0]}/{bundle_name}/{ts_code}")
@@ -1071,10 +1072,36 @@ def update_asset_bundle(bundle_name, bundle_func, market="CN", night_shift=True,
 
 
 def update_asset_qdii():
-    #_API_Scrapy.qdii_research()
-    #LB.multi_process(func=_API_Scrapy.qdii_grade,a_kwargs={"qdii":"grade"},splitin=2)
-    LB.multi_process(func=_API_Scrapy.qdii_grade,a_kwargs={"qdii":"research"},splitin=2)
+    # 机构评估和研究，机构热度
+    LB.multi_process(func=_API_Scrapy.qdii, a_kwargs={"qdii": "grade"}, splitin=2)
+    LB.multi_process(func=_API_Scrapy.qdii, a_kwargs={"qdii": "research"}, splitin=2)
 
+
+
+def update_hk_hsgt():
+    #whole sum of 北向南向资金
+    df_trade_date=get_trade_date()
+    df_trade_date=df_trade_date[df_trade_date["lastdayofyear"]==True]
+
+    df_result=pd.DataFrame()
+    start_date=20130101
+    df_trade_date=df_trade_date[df_trade_date.index>start_date]
+    for end_date in df_trade_date.index:
+        print(f"hsgt {start_date} {end_date}")
+        df=_API_Tushare.my_hsgt(start_date=str(start_date),end_date=str(end_date))
+        df=LB.df_reverse_reindex(df)
+        df_result=df_result.append(df,sort=False,ignore_index=False)
+        start_date=end_date
+
+    df_result=df_result.drop_duplicates("trade_date")
+    df_result=df_result.set_index("trade_date",drop=True)
+    df_result.index = df_result.index.astype(int)
+    for ts_code in ["000001.SH","399006.SZ","399001.SZ"]:
+        df_index=get_asset("000001.SH",asset="I")
+        df_result[ts_code]=df_index["close"]
+    a_path=LB.a_path("Market/CN/Asset/E/hsgt/hsgt")
+    LB.to_csv_feather(df=df_result,a_path=a_path)
+    return df_result
 
 def update_asset_xueqiu(asset="E", market="CN"):
     """loads xueqiu data from jq"""
@@ -1599,58 +1626,7 @@ def update_all_in_one_hk(night_shift=False):
     LB.multi_process(func=update_asset_CNHK, a_kwargs={"market": "HK", "asset": "E", "freq": "D", "night_shift": False}, splitin=10)  # SMART
 
 
-def update_all_in_one_cn(night_shift=False):
-    # 0. ALWAYS UPDATE
-    # 1. ONLY ON BIG UPDATE: OVERRIDES EVERY THING EVERY TIME
-    # 2. ON BOTH BIG AND SMALL UPDATE: OVERRIDES EVERYTHING EVERY TIME
-    # 3. SMART: BIG OR SMALL UPDATE DOES NOT MATTER, ALWAYS CHECK IF FILE NEEDS TO BE UPDATED
-
-    # 1.0. ASSET - Indicator bundle
-    if False:
-        # E: update each E asset one after another
-        for asset in ["E","FD"]:
-            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle(asset=asset).items()):
-                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset":[asset]}, splitin=6)  # SMART does not alternate step, but alternates fina_name+fina_function
-
-
-    else:
-        # update all E asset at same time
-        for asset in ["FD"]:
-            a_partial = [{"bundle_name": bundle_name, "bundle_func": bundle_func} for bundle_name, bundle_func in LB.c_asset_E_bundle(asset=asset).items()]
-            LB.multi_process(func=update_asset_bundle, a_kwargs={"step": 1, "night_shift": False, "a_asset":[asset]}, splitin=6)  # SMART does not alternate step, but alternates fina_name+fina_function
-
-
-    # 1.0. GENERAL - CAL_DATE
-    # update_trade_cal()  # always update
-
-    # # 1.3. GENERAL - TS_CODE
-    # for asset in ["sw_industry1", "sw_industry2","sw_industry3","jq_industry1","jq_industry2","zj_industry1","concept"] + c_asset() + ["G","F"]:
-    # update_ts_code(asset)  # ALWAYS UPDATE
-
-    # # 1.5. GENERAL - TRADE_DATE (later than ts_code because it counts ts_codes)
-    # for freq in ["D"]:  # Currently only update D and W, because W is needed for pledge stats
-    #    update_trade_date(freq)  # ALWAYS UPDATE
-
-    # 2.2. ASSET
-    # LB.multi_process(func=update_asset_EIFD_D, a_kwargs={"asset": "I", "freq": "D", "market": "CN", "night_shift": False}, a_partial=LB.multi_steps(4))  # SMART
-    # LB.multi_process(func=update_asset_EIFD_D, a_kwargs={"asset": "FD", "freq": "D", "market": "CN", "night_shift": False}, a_partial=LB.multi_steps(4))  # SMART
-    # LB.multi_process(func=update_asset_EIFD_D, a_kwargs={"asset": "E", "freq": "D", "market": "CN", "night_shift": False}, a_partial=LB.multi_steps(8))  # SMART
-    # update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
-    # multi_process(func=update_asset_EIFD_D, a_kwargs={"asset": "F", "freq": "D", "market": "CN", "night_shift": False}, a_partial=LB.multi_steps(1))  # SMART
-
-    # 3.2. DATE
-    # date_step = [-1, 1] if night_shift else [-1, 1]
-    # LB.multi_process(func=update_date, a_kwargs={"asset": "I", "freq": "D", "market": "CN", "night_shift": False, "naive":False}, a_partial=LB.multi_steps(1))  # SMART
-    # LB.multi_process(func=update_date, a_kwargs={"asset": "FD", "freq": "D", "market": "CN", "night_shift": False, "naive":True}, a_partial=LB.multi_steps(1))  # SMART
-    # LB.multi_process(func=update_date, a_kwargs={"asset": "E", "freq": "D", "market": "CN", "night_shift": False, "naive":False}, a_partial=LB.multi_steps(1))  # SMART
-    # LB.multi_process(func=update_date, a_kwargs={"asset": "G", "freq": "D", "market": "CN", "night_shift": False, "naive":False}, a_partial=LB.multi_steps(1))  # SMART
-    # LB.multi_process(func=update_date, a_kwargs={"asset": "F", "freq": "D", "market": "CN", "night_shift": False, "naive":True}, a_partial=LB.multi_steps(1))  # SMART
-
-    # # 3.3. DATE - BASE
-    # update_asset_stock_market_all(start_date="19990101", end_date=today(), night_shift=night_shift, asset=["E"])  # SMART
-
-
-def update_all_in_one_cn_v2(night_shift=False, until=999):
+def update_all_in_one_cn(night_shift=False, until=999):
     # 0. ALWAYS UPDATE
     # 1. ONLY ON BIG UPDATE: OVERRIDES EVERY THING EVERY TIME
     # 2. ON BOTH BIG AND SMALL UPDATE: OVERRIDES EVERYTHING EVERY TIME
@@ -1694,7 +1670,10 @@ def update_all_in_one_cn_v2(night_shift=False, until=999):
     for asset in ["I","E","FD"]:
         LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=8)  # 40 mins
     update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
-    update_asset_qdii()#tooslow
+
+    # 2.3 OTHERS
+    update_asset_qdii()
+    update_hk_hsgt()
 
     if until <= 3:
         return print(f"update_all_in_one_cn2 finished until {until}")
@@ -1739,7 +1718,9 @@ if __name__ == '__main__':
         # update_all_in_one_us()
         #update_all_in_one_us()
         #update_asset_stock_market_all()
-        update_asset_qdii()
+        for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset="E").items()):
+            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": ["E"]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
+
         #update_all_in_one_cn_v2()
         #update_all_in_one_hk()
         #update_all_in_one_us()

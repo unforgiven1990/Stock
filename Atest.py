@@ -1275,15 +1275,22 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
     df_result = pd.DataFrame()
     extrem_pct=0.06
     a_freq=[20,60,240]
+    a_freqd = []
     a_freq_s=["D", "M", "S"] #this is better than D,W,M,S because year is important, it guarantees stock with high long term trend to be higher
+    df_trade_date=DB.get_trade_date()
+    #get the last n days of trade date from end_date
+    df_trade_date=df_trade_date[(df_trade_date.index > start_date)&(df_trade_date.index <= end_date)]
+    for freq in [20,60,240]:
+        a_freqd+=[df_trade_date.index[-freq]]
 
+    print(a_freqd)
     #preload 3 main index
     #TODO for now just use cn index for all, later use nasdaq and Hang seng
     d_preload_index = DB.preload_index(market="CN")
 
     # loop
     for ts_code, asset in zip(df_ts_code.index[::step], df_ts_code["asset"][::step]):
-        print("calc bullishness", market, asset, ts_code)
+        print("calc bullishness",start_date,end_date, market, asset, ts_code)
 
         try:
             df_asset = DB.get_asset(ts_code=ts_code, asset=asset, market=market)
@@ -1399,27 +1406,42 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
             if asset == "E" and market == "CN":
 
                 # qdii research
-                df_qdii_research = DB.get_asset(ts_code=ts_code, freq="qdii_research", market="CN")
-                df_qdii_research=df_qdii_research[df_qdii_research.index <= str(end_date)]
-                if not df_qdii_research.empty:
-                    df_result.at[ts_code, "qdii_research"] = len(df_qdii_research)
-                    df_result.at[ts_code, "qdii_research/period"] = len(df_qdii_research) / len(df_asset)
+                for qdii in ["research","grade"]:
+                    df_qdii_rg = DB.get_asset(ts_code=ts_code, freq=f"qdii_{qdii}", market="CN")
+                    df_qdii_rg=df_qdii_rg[(df_qdii_rg.index > start_date)&(df_qdii_rg.index <= end_date)]
 
-                # qdii grade
-                df_qdii_grade = DB.get_asset(ts_code=ts_code, freq="qdii_grade", market="CN")
-                df_qdii_grade = df_qdii_grade[df_qdii_grade.index <= str(end_date)]
-                if not df_qdii_grade.empty:
-                    df_result.at[ts_code, "qdii_grade"] = len(df_qdii_grade)
-                    df_result.at[ts_code, "qdii_grade/period"] = len(df_qdii_grade) / len(df_asset)
+                    if not df_qdii_rg.empty:
+                        df_result.at[ts_code, f"qdii_{qdii}/period"] = len(df_qdii_rg) / len(df_asset)
+                        for freqd_trade_date,freqd in zip(a_freqd,[20,60,240]):
+
+                            df_qdii_rd_freqd=df_qdii_rg[df_qdii_rg.index >= freqd_trade_date]
+                            df_result.at[ts_code, f"qdii_{qdii}{freqd}"] =len(df_qdii_rd_freqd) / freqd
+
+                # hk hold
+                df_hk = DB.get_asset(ts_code=ts_code, freq=f"hk_hold", market="CN")
+                df_hk.index=df_hk.index.astype(int)
+                df_hk = df_hk[(df_hk.index > start_date) & (df_hk.index <= end_date)]
+                if not df_hk.empty:
+                    df_result.at[ts_code, f"hk_hold"] = df_hk["ratio"].iat[-1]
+                    df_result.at[ts_code, f"hk_hold_ALL"] = df_hk["ratio"].mean()/len(df_hk)
 
 
     """RANK ALL STUFF"""
-    # qdii rank = ability to be independent from market
+    # qdii rank = all time rank. how much all time qdii attention does this stock get
     try:
         df_result["qdii_rank"] = df_result[f"qdii_research/period"] + df_result[f"qdii_grade/period"]
         df_result["qdii_rank"] = df_result["qdii_rank"].rank(ascending=False)
     except:
         df_result["qdii_rank"] = np.nan
+
+    # qdii rank = short time rank. how much all time qdii attention does this stock get
+    for qddii in ["research", "grade"]:
+        try:
+            df_result[f"qdii_{qddii}_mom"] = (df_result[f"qdii_{qddii}20"]/df_result[f"qdii_{qdii}/period"])*0.2+\
+                                             (df_result[f"qdii_{qddii}60"]/df_result[f"qdii_{qdii}/period"])*0.6+\
+                                             (df_result[f"qdii_{qddii}240"]/df_result[f"qdii_{qdii}/period"])*0.2
+        except:
+            df_result[f"qdii_{qddii}_mom"] = np.nan
 
 
     # offensive rank = ability to gain high return, no mater how the path is. Monotony and std is implicitly ranked here.
@@ -1743,6 +1765,10 @@ def asset_candlestick_analysis_multiple():
     path = "Market/CN/Atest/candlestick/summary.csv"
     df_all_result.to_csv(path, index=True)
 
+def asset_beat_index_loop():
+    a_years=["20000101","20050101","20100101","20150101","20200101"]
+    for end_date in a_years:
+         asset_beat_index("0000101",end_date)
 
 def asset_distribution(asset="I", column="close", bins=10):
     d_preload = DB.preload(asset=asset, step=5)
@@ -1763,6 +1789,187 @@ def asset_distribution(asset="I", column="close", bins=10):
                     df_result.at[ts_code, f"c{c1, c2}"] = len(df[df["norm"].between(c1, c2)])
 
             LB.to_csv_feather(df_result, a_path=a_path, skip_feather=True)
+
+def asset_beat_index(start_date="00000000",end_date=LB.today()):
+    """checks how many stock beats their index
+    1. normalize all index to the day certain asset is IPOd
+    2. Check if index or asset is better until today
+
+    Amazing Result:
+
+    53%主板beat index
+    60%中小板beat index
+    30%创业板beat index
+
+    only 30% beat industry1
+    only 30% beat industry2
+    only 30% beat industry3
+
+    many stock who beat the index, in the past n years, dont beat index in the next future years
+    in earlier years like 2000 to 2005, 2/3 of stock who were good in the past stay good.
+    now like 2015 to 2020, half of them become bad. This means it is hard now to pickup stock that stays good
+
+    The pct% of stocks beating index,industry1,industry2,industry3 is increasing over time
+    in 2000-2005 it was 7%
+    in 2005-2010 it was 17%
+    in 2010-2015 it was 29%
+    in 2015-2020 it was 22%
+    of course, this number is distored by new IPOS and crazy period timing
+
+    TAKEAWAY:
+    Stocks which perform better than index,industry1-3 might be a good stock. some of them are temporal good.
+    But a good stock, always perform better than index.
+    =shrinks down the pool
+    =step 2: from this pool. take the best industry
+    BUT in theory, past does not predict future. Past good stock does not remain good, but is only more likely to remain good.
+
+    """
+
+    #init
+    df_ts_code=DB.get_ts_code()
+    df_industry1_code=DB.get_ts_code(a_asset=[f"industry1"])
+    df_industry2_code=DB.get_ts_code(a_asset=[f"industry2"])
+    df_industry3_code=DB.get_ts_code(a_asset=[f"industry3"])
+
+    #preload
+    d_index=DB.preload(asset="I", step=1, d_queries_ts_code=LB.c_index_queries())
+    d_e=DB.preload(step=1)
+    df_result=pd.DataFrame()
+
+    for ts_code, df_asset in d_e.items():
+
+        print(ts_code)
+        #compare against exchange
+        exchange=df_ts_code.at[ts_code,"exchange"]
+        if exchange=="创业板":
+            compare="399006.SZ"
+        elif exchange=="中小板":
+            compare ="399001.SZ"
+        elif exchange=="主板":
+            compare="000001.SH"
+        df_exchange = d_index[compare].copy()
+        df_exchange=LB.df_between(df_exchange,start_date,end_date)
+
+        #compare against industry
+        try:
+            industry1 = df_industry1_code.at[ts_code, "industry1"]
+            industry2 = df_industry2_code.at[ts_code, "industry2"]
+            industry3 = df_industry3_code.at[ts_code, "industry3"]
+        except Exception as e:
+            print(ts_code,"skipped",e)
+            continue
+
+        df_industry1= DB.get_asset(ts_code=f"industry1_{industry1}", asset="G")
+        df_industry2= DB.get_asset(ts_code=f"industry2_{industry2}", asset="G")
+        df_industry3= DB.get_asset(ts_code=f"industry3_{industry3}", asset="G")
+        df_industry1 = LB.df_between(df_industry1, start_date, end_date)
+        df_industry2 = LB.df_between(df_industry2, start_date, end_date)
+        df_industry3 = LB.df_between(df_industry3, start_date, end_date)
+
+        df_result.at[ts_code,"in1"]=industry1
+        df_result.at[ts_code,"in2"]=industry2
+        df_result.at[ts_code,"in3"]=industry3
+        df_asset["gmean_norm"]=df_asset["close"].pct_change()
+        df_result.at[ts_code,"gmean"]=df_asset["gmean_norm"].mean()/df_asset["gmean_norm"].std()
+
+        #run and evaluate
+        for key,df_compare in {"index":df_exchange, "industry1":df_industry1,"industry2":df_industry2,"industry3":df_industry3}.items():
+            df_asset_slim=LB.df_ohlcpp(df_asset).reset_index()
+            df_index_slim=LB.df_ohlcpp(df_compare).reset_index()
+
+            df_asset_slim["trade_date"]=df_asset_slim["trade_date"].astype(int)
+            df_index_slim["trade_date"]=df_index_slim["trade_date"].astype(int)
+
+            df_slim=pd.merge(df_asset_slim,df_index_slim,on="trade_date",how="inner",suffixes=[f"_{ts_code}",f"_{compare}"],sort=False)
+
+            if df_slim.empty:
+                continue
+
+            for code in [ts_code,compare]:
+                df_slim[f"norm_{code}"]=df_slim[f"close_{code}"]/df_slim.at[0,f"close_{code}"]
+                df_slim[f"norm_pct_{code}"]=df_slim[f"norm_{code}"].pct_change()
+            #result=norm_ts_code/norm_compare
+
+            df_result.at[ts_code,f"{key}_period"]=period=len(df_slim)-1
+            df_result.at[ts_code,f"{key}_asset_vs_index_gain"]= df_slim.at[period, f"norm_{ts_code}"] / df_slim.at[period, f"norm_{compare}"]
+            df_result.at[ts_code,f"{key}_asset_vs_index_sharp"]= (df_slim[f"norm_pct_{ts_code}"].mean() / df_slim[f"norm_pct_{ts_code}"].std()) / df_slim[f"norm_pct_{compare}"].mean() / df_slim[f"norm_pct_{compare}"].std()
+            df_result.at[ts_code,f"{key}_asset_vs_index_gmean"]= (df_slim[f"norm_pct_{ts_code}"].mean() / df_slim[f"norm_pct_{ts_code}"].std())
+
+            #TODO  beat industry, concept
+            df_result.at[ts_code,"index"]=compare
+
+
+    for key in ["index", "industry1", "industry2", "industry3"]:
+        df_result[f"beat_{key}"]=(df_result[f"{key}_asset_vs_index_gain"]>1).astype(int)
+    df_result.loc[ (df_result[f"beat_index"]==1) & (df_result[f"beat_industry1"]==1) & (df_result[f"beat_industry2"]==1) & (df_result[f"beat_industry3"]==1), "beat_all"]=1
+    df_result.index.name="ts_code"
+
+    DB.to_excel_with_static_data(df_ts_code=df_result,path=f"Market/CN/ATest/Beat_Index/result_{start_date}_{end_date}.xlsx")
+    # a_path=LB.a_path("Market/CN/ATest/Beat_Index/result")
+    # LB.to_csv_feather(df=df_result,a_path=a_path)
+
+def asset_beat_index_freq(step=1):
+    """
+    compares index,industry1-3 vs asset on a yearly basis
+    it seems that only 2007-2009, 2015 more than 50% stock beat index
+    This means, small stocks are only good at crazy time
+    Over all years. Only 30 to 40% beat the index
+    Mostly when time is crazy, bad stock gain more, and start to beat index in that wmsy.
+    But this happens very rarely. So beating index is highly correlated with crazy time.
+    The % of stocks beating index is not directly predictive as policical directions are disturbing this indicator
+
+    The mean reverse effect in this is not that strong. Too much noise to be added to as a signal.
+
+    """
+
+    # preload index and asset
+    d_index = DB.preload(asset="I", step=1, d_queries_ts_code=LB.c_index_queries())
+    d_e = DB.preload(step=step)
+    d_result={}
+
+    for wmsy in ["W","M","S","Y"]:
+        # transform index
+        d_i_wmsy={}
+        for key,df in d_index.items():
+            d_i_wmsy[key]=LB.df_to_freq(df,freq=wmsy)
+
+        #transform asset
+        d_e_wmsy={}
+        for ts_code, df_asset in d_e.items():
+            d_e_wmsy[ts_code] = LB.df_to_freq(df_asset,freq=wmsy)
+
+        #compare each asset with index:
+        df_result_freq=pd.DataFrame()
+        for ts_compare,df_compare in d_i_wmsy.items():
+            for trade_date in df_compare.index:
+                exists_counter=0
+                better_than_index_counter=0
+                compare_pct_chg=df_compare.at[trade_date,"pct_chg"]
+
+                for ts_code, df_asset in d_e_wmsy.items():
+                    print(ts_compare, wmsy,trade_date,ts_code)
+                    if trade_date in df_asset.index:
+                        exists_counter+=1
+
+                        if df_asset.at[trade_date,"pct_chg"]>compare_pct_chg:
+                            better_than_index_counter+=1
+                try:
+                    df_compare.at[trade_date,f"better_than_{ts_compare}"]=better_than_index_counter/exists_counter
+                except:
+                    pass
+
+            df_result_freq[f"close_{ts_compare}"] = df_compare["close"]
+            df_result_freq[f"better_than_{ts_compare}"] = df_compare[f"better_than_{ts_compare}"]
+        d_result[wmsy]=df_result_freq
+    LB.to_excel(path=f"Market/CN/Atest/Beat_Index/beat_index_freq.xlsx",d_df=d_result)
+
+
+
+
+
+
+
+
 
 
 def date_daily_stocks_abve():
@@ -1910,7 +2117,7 @@ if __name__ == '__main__':
 
     #asset_bullishness2()
     #asset_bollinger()
-    asset_bullishness(a_asset=["E","FD","I"],step=1,market="CN")
+    asset_bullishness(a_asset=["E"],step=1,market="CN")
     #asset_fund_portfolio()
 
 

@@ -87,7 +87,7 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
     xls = pd.ExcelFile(f"Market/{market}/ATest/bullishness/bullishness_{market}_0_{trade_date}.xlsx")
     df_bullishness_overview_master = pd.read_excel(xls, sheet_name="Overview")
     try:
-        df_bullishness_overview_master = df_bullishness_overview_master[["ts_code", "period", "pe_ttm","pb","total_mv","pe_ttm_ALL","pb_ALL","offensive_rank", "defensive_rank", "allround_rank_geo","qdii_rank","qdii_research/period", "qdii_grade/period","M_std","000001.SH_beta","399001.SZ_beta","399006.SZ_beta","asset"]+[f"pgain{freq}" for freq in [5,20,60,240]]+[f"fgain{freq}" for freq in [5,20,60,240]]]
+        df_bullishness_overview_master = df_bullishness_overview_master[["ts_code", "period", "pe_ttm","pb","total_mv","pe_ttm_ALL","pb_ALL","offensive_rank", "defensive_rank", "allround_rank_geo","qdii_rank","qdii_research_mom","qdii_grade_mom","qdii_research/period", "qdii_grade/period","M_std","000001.SH_beta","399001.SZ_beta","399006.SZ_beta","asset"]+[f"pgain{freq}" for freq in [5,20,60,240]]+[f"fgain{freq}" for freq in [5,20,60,240]]+[f"qdii_research{freq}" for freq in [20,60,240]]+[f"qdii_grade{freq}" for freq in [20,60,240]]]
     except:
         df_bullishness_overview_master = df_bullishness_overview_master[["ts_code", "period", "offensive_rank", "defensive_rank", "allround_rank_geo","M_std","000001.SH_beta","399001.SZ_beta","399006.SZ_beta","asset"]+[f"pgain{freq}" for freq in [5,20,60,240]]+[f"fgain{freq}" for freq in [5,20,60,240]]]
     df_bullishness_overview_master.set_index("ts_code", drop=True, inplace=True)
@@ -128,13 +128,15 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
     #market overview
 
     # 6. group gain by
-    for column in ["pe_ttm","pb","pe_ttm_ALL","pb_ALL","close","total_mv","qdii_rank","qdii_research/period", "qdii_grade/period","M_std","000001.SH_beta","399001.SZ_beta","399006.SZ_beta""allround_rank_geo","offensive_rank","defensive_rank"]:
+    for column in ["pe_ttm","pb","pe_ttm_ALL","pb_ALL","close","total_mv","qdii_rank","qdii_research_mom","qdii_grade_mom","qdii_research/period", "qdii_grade/period","M_std","000001.SH_beta","399001.SZ_beta","399006.SZ_beta""allround_rank_geo","offensive_rank","defensive_rank"]+[f"qdii_research{freq}" for freq in [20,60,240]]+[f"qdii_grade{freq}" for freq in [20,60,240]]:
         print(f"calculate {column}")
         if column in df_bullishness_overview_master.columns:
             df_column = df_bullishness_overview_master[df_bullishness_overview_master["asset"] == "E"]
             helper_function(df_column=df_column, column=column, d_pgain=d_pgain, df_pgain_summary=df_pgain_summary,df_fgain_summary=df_fgain_summary, p_setting=p_setting)
 
     # add the df to final report excel
+    df_pgain_summary.index.name="group"
+    df_fgain_summary.index.name="group"
     d_df[f"pgain"] = df_pgain_summary
     d_df[f"fgain"] = df_fgain_summary
 
@@ -186,8 +188,14 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
                 # NOW vs historic PE and PB
                 if asset == "E" and market=="CN":
                     for column in ["pe_ttm", "pb"]:
-                        df_selected_assets.at[ts_code, f"{column}_ALL"] = df_bullishness_overview.at[ts_code,f"{column}_ALL"]
-                        df_selected_assets.at[ts_code, f"{column}_NOW"] = df_bullishness_overview.at[ts_code,f"{column}"]
+                        try:
+                            df_selected_assets.at[ts_code, f"{column}_ALL"] = df_bullishness_overview.at[ts_code,f"{column}_ALL"]
+                        except:
+                            df_selected_assets.at[ts_code, f"{column}_ALL"] = np.nan
+                        try:
+                            df_selected_assets.at[ts_code, f"{column}_NOW"] = df_bullishness_overview.at[ts_code,f"{column}"]
+                        except:
+                            df_selected_assets.at[ts_code, f"{column}_NOW"] = np.nan
 
 
             #after all individual assets are finished calculated
@@ -213,6 +221,11 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
             d_df[f"{asset}_{min_period}"] = df_selected_assets
 
 
+    df_north=DB.get(a_path=("Market/CN/Asset/E/hsgt/hsgt"))
+    if df_north.empty:
+        df_north=DB.update_hk_hsgt()
+    d_df[f"north"]=df_north
+
     LB.to_csv_feather(pd.DataFrame(),a_path=LB.a_path(f"Market/{market}/Report/folder"))
     LB.to_excel(path=f"Market/{market}/Report/report_{trade_date}.xlsx",d_df=d_df,color=True)
     LB.file_open(f"D:\Stock/Market/{market}/Report/report_{trade_date}.xlsx")
@@ -222,12 +235,60 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
 
 if __name__ == '__main__':
     #TODO: when do stock revert? volume, time to previous date, ma, market, boll , supportresistance
-    for market in ["CN"]:
-        create_daily_report(update_DB=True,market=market)
+    import Alpha
+    do=2
 
-    if False:
-        df_trade_date=DB.get_trade_date()
-        df_trade_date=df_trade_date[df_trade_date["lastdayofseason"]==True]
+
+    if do==1:
+        for market in ["CN"]:
+            create_daily_report(update_DB=False,market=market)
+
+
+
+    if do==2:
+        for pf in ["p","f"]:
+            df_sh = DB.get_asset("399006.SZ", asset="I")
+            df_trade_date=DB.get_trade_date()
+            df_trade_date=df_trade_date[df_trade_date["lastdayofseason"]==True]
+            df_trade_date["399006.SZ"]=df_sh["close"]
+            df_trade_date=df_trade_date[["399006.SZ"]]
+            for trade_date in df_trade_date.index:
+                try:
+                    xls = pd.ExcelFile(f"Market/CN/Report/report_{trade_date}.xlsx")
+                except:
+                    continue
+                df_pgain = pd.read_excel(xls, sheet_name=f"{pf}gain")
+                try:
+                    df_pgain=df_pgain.set_index("Unnamed: 0")
+                except:
+                    df_pgain=df_pgain.set_index("group")
+                df_pgain.index.name="group"
+                for freq in [60]:
+                    for column in ["offensive_rank","defensive_rank","M_std","000001.SH_beta","399006.SZ_beta","399001.SZ_beta","pe_ttm","pb","pe_ttm_ALL","pb_ALL","total_mv","qdii_rank"]:
+                        print("doin column",column,trade_date)
+                        for q1,q2 in [(0,0.2),(0.2,0.4),(0.4,0.6),(0.6,0.8),(0.8,1)]:
+                            try:
+                                df_trade_date.at[trade_date,f"{column}_q{q1},{q2}"]=df_pgain.at[f"{column}_q{q1},{q2}",f"{pf}gain{freq}"]
+                            except Exception as e:
+                                df_trade_date.at[trade_date, f"{column}_q{q1},{q2}"] = np.nan
+                                print(e)
+
+            #convert to compgain
+            df_copy=df_trade_date.copy()
+            for column in df_copy.columns:
+                if column !="399006.SZ":
+                    df_copy[column]=Alpha.comp_chg2(df=df_trade_date,abase=column,inplace=False)
+
+
+            df_copy.to_csv(f"{pf}gain_comp_chg.csv")
+
+
+
+    if do==3:
+        df_trade_date = DB.get_trade_date()
+        df_trade_date = df_trade_date[df_trade_date["lastdayofseason"] == True]
+
         for trade_date in df_trade_date.index[::-1]:
+
             print(f"CALCULATE REPORT for trade_date {trade_date}")
             create_daily_report(update_DB=False,trade_date=trade_date)

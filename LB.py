@@ -388,7 +388,8 @@ def c_asset_E_bundle_mini(asset="E"):
     if asset=="E":
         return {
                 # financial
-                "fina_indicator": _API_Tushare.my_fina_indicator,
+                #"fina_indicator": _API_Tushare.my_fina_indicator,
+                "hk_hold": _API_Tushare.my_hk_hold,
                 #"pledge_stat": _API_Tushare.my_pledge_stat(),
 
                 }
