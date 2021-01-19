@@ -935,7 +935,7 @@ def to_csv_feather(df, a_path, index_relevant=True, skip_feather=False, skip_csv
     if not skip_feather:
         for _ in range(10):
             try:
-                df.to_feather(a_path[1],)
+                df.to_feather(a_path[1])
                 break
             except Exception as e:
                 handle_save_exception(e, a_path[1])
@@ -1185,15 +1185,19 @@ def today():
 
 def latest_trade_date(market="CN"):
     import DB
-    #select 10 random stocks and check their biggest date
-    df_ts_code = DB.get_ts_code(a_asset=["E"],market=market)
-    trade_date_max = 00000000
-    for ts_code in df_ts_code.index[:20]:
-        df_asset=DB.get_asset(ts_code=ts_code,market=market,asset="E")
-        asset_latest_trade_date=df_asset.index[-1]
-        if trade_date_max<asset_latest_trade_date:
-            trade_date_max=asset_latest_trade_date
-    return trade_date_max
+
+    try:#select 10 random stocks and check their biggest date
+        df_ts_code = DB.get_ts_code(a_asset=["E"],market=market)
+        trade_date_max = 00000000
+        for ts_code in df_ts_code.index[:20]:
+            df_asset=DB.get_asset(ts_code=ts_code,market=market,asset="E")
+            asset_latest_trade_date=df_asset.index[-1]
+            if trade_date_max<asset_latest_trade_date:
+                trade_date_max=asset_latest_trade_date
+        return trade_date_max
+    except:#if it doesnt work, then we take the last trade date as usual
+        df_trade_date=DB.get_trade_date()
+        return df_trade_date.index[-1]
 
 
 

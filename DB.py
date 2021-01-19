@@ -600,7 +600,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             # a_path = LB.a_path(f"Market//{market}//Asset//{asset}//{ts_code}")
 
             # file exists--> check latest_trade_date, else update completely new
-            if os.path.isfile(a_path[0]) :  # or os.path.isfile(a_path[1])
+            if os.path.isfile(a_path[1]) :  # or os.path.isfile(a_path[1])
 
                 try:
                     df_saved = get_asset(ts_code=ts_code, asset=asset, freq=freq, market=market)  # get latest file trade_date
@@ -762,6 +762,14 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                 for freqn in [5,  20, 60, 240]:
                     df[f"fgain{freqn}"]=Alpha.fgain(df=df, abase="close", freq=freqn, inplace=False)
 
+                # ma for infochart
+                for freqn in [5,  20, 60, 240]:
+                    df[f"ma{freqn}"] = df["close"].rolling(freqn).mean()
+
+                # rsi for infochart
+                for freqn in [5, 20, 60, 240]:
+                    df[f"rsi{freqn}"] = Alpha.rsi(df=df,abase="close",freq=freqn,inplace=False)
+
                 # bollinger scale to between 0 and 1
                 try:
                     df[f"boll_up"], egal, df[f"boll_low"] = talib.BBANDS(df["close"], 20, 2, 2)
@@ -771,7 +779,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     df[f"boll_low"]=np.nan
                     df[f"boll"]=np.nan
 
-            LB.to_csv_feather(df=df, a_path=a_path, skip_csv=False, skip_feather=True)  # save space using feather, but cannot be opened by html
+            LB.to_csv_feather(df=df, a_path=a_path, skip_csv=True, skip_feather=False)  # save space using feather, but cannot be opened by html
             print(offset ,asset, ts_code, freq, end_date, "UPDATED!", real_latest_trade_date)
             print("=" * 50)
             print()
@@ -1081,26 +1089,25 @@ def update_asset_qdii():
 def update_hk_hsgt():
     #whole sum of 北向南向资金
     df_trade_date=get_trade_date()
-    df_trade_date=df_trade_date[df_trade_date["lastdayofyear"]==True]
+    a_path = LB.a_path("Market/CN/Asset/E/hsgt/hsgt")
 
-    df_result=pd.DataFrame()
-    start_date=20130101
+    try:
+        df_result=get(a_path)
+        start_date=int(df_result.index[-1])
+    except:
+        df_result = pd.DataFrame()
+        start_date=20130101
+
     df_trade_date=df_trade_date[df_trade_date.index>start_date]
     for end_date in df_trade_date.index:
-        print(f"hsgt {start_date} {end_date}")
-        df=_API_Tushare.my_hsgt(start_date=str(start_date),end_date=str(end_date))
+        df=_API_Tushare.my_hsgt(start_date=str(end_date),end_date=str(end_date))
         df=LB.df_reverse_reindex(df)
+        df=df.set_index("trade_date",drop=True)
+        df.index=df.index.astype(int)
         df_result=df_result.append(df,sort=False,ignore_index=False)
-        start_date=end_date
 
-    df_result=df_result.drop_duplicates("trade_date")
-    df_result=df_result.set_index("trade_date",drop=True)
-    df_result.index = df_result.index.astype(int)
-    for ts_code in ["000001.SH","399006.SZ","399001.SZ"]:
-        df_index=get_asset("000001.SH",asset="I")
-        df_result[ts_code]=df_index["close"]
-    a_path=LB.a_path("Market/CN/Asset/E/hsgt/hsgt")
-    LB.to_csv_feather(df=df_result,a_path=a_path)
+    df_result=df_result.loc[df_result.index.drop_duplicates()]
+    LB.to_csv_feather(df=df_result,a_path=a_path,skip_feather=True)
     return df_result
 
 def update_asset_xueqiu(asset="E", market="CN"):
@@ -1188,7 +1195,7 @@ def update_asset_beta_table(asset1="I", asset2="E", freq=240):
         LB.to_csv_feather(df=df_result, a_path=a_path, skip_csv=True)
 
 
-def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, start_date="000000", end_date=LB.today(), naive=False):
+def update_date(asset="E", freq="D", market="CN", night_shift=False, step=1, start_date="000000", end_date=LB.today(), naive=False):
     """step -1 might be wrong if trade dates and asset are updated seperately. then they will not align
         step 1 always works
         naive: approach always works, but is extremly slow
@@ -1198,6 +1205,7 @@ def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, star
 
     # latest example column
     example_column = get_example_column(asset=asset, freq=freq, market=market, numeric_only=True, notna=False)
+    example_column =["ts_code"]+example_column
 
     # init df
     df_static_data = get_ts_code(a_asset=[asset])
@@ -1206,19 +1214,22 @@ def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, star
     # init dict
     d_list_date = {ts_code: row["list_date"] for ts_code, row in get_ts_code(a_asset=[asset]).iterrows()}
     d_queries_ts_code = LB.c_G_queries() if asset == "G" else {}
-    d_preload = preload(asset=asset, freq=freq, step=1, period_abv=240, d_queries_ts_code=d_queries_ts_code)
+    d_preload = preload(asset=asset, freq=freq, step=1, period_abv=40, d_queries_ts_code=d_queries_ts_code)
     d_lookup_table = {ts_code: (0 if step == 1 else len(df) - 1) for ts_code, df in d_preload.items()}
 
     for trade_date in df_trade_dates.index[::step]:  # IMPORTANT! do not modify step, otherwise lookup will not work
         a_path = LB.a_path(f"Market/{market}/Date/{asset}/{freq}/{trade_date}")
         a_date_result = []
+        print(f"start update {trade_date}")
 
         # date file exists AND not night_shift. If night_shift, then always overwrite
         if os.path.isfile(a_path[1]) and (not night_shift):
 
             if naive:  # fallback strategies is the naive approach
+                print(f"{trade_date} file exist AND naive")
                 continue
             else:
+                print(f"{trade_date} file exist NOT naive")
                 # update lookup table before continue. So that skipped days still match
                 for ts_code, df_asset in d_preload.items():
                     row_number = d_lookup_table[ts_code]
@@ -1232,6 +1243,8 @@ def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, star
 
         # date file does not exist or night_shift
         else:
+
+
             for counter, (ts_code, df_asset) in enumerate(d_preload.items()):
 
                 if naive:
@@ -1242,14 +1255,12 @@ def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, star
                         pass
                 else:
                     if len(df_asset) == 0:
-                        print(f"{trade_date} skip ts_code {ts_code} because len is 0")
                         continue
 
                     # if asset list date is in future: not IPO yet
                     list_date = d_list_date[ts_code]
                     if type(list_date) in [str, int]:
                         if int(list_date) > int(trade_date):
-                            # print(f"{trade_date} skip ts_code {ts_code} because IPO in future")
                             continue
 
                     row_number = d_lookup_table[ts_code]  # lookup table can not be changed while iterating over it.
@@ -1261,7 +1272,6 @@ def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, star
                         continue
 
                     if int(df_asset.index[row_number]) == int(trade_date):
-
                         a_date_result.append(df_asset.loc[trade_date].to_numpy().flatten())
                         d_lookup_table[ts_code] += step
                         # print(f"IN {trade_date} counter {counter}, step {step}, ts_code {ts_code}, len {len(df_asset)}  row number {row_number}")
@@ -1271,10 +1281,16 @@ def update_date(asset="E", freq="D", market="CN", night_shift=True, step=1, star
                         # print(f"OUT {trade_date} counter {counter}, step {step}, ts_code {ts_code}, len {len(df_asset)}  row number {row_number} associated date {int(df_asset.index[row_number])}")
 
             # create df_date from a_date_result
+
             df_date = pd.DataFrame(data=a_date_result, columns=example_column)
+            if df_date.empty:
+                print(f"{trade_date} probably has no stock? Continued anyway")
+                continue
 
             # remove duplicate columns that also exist in static data. Then merge
             no_duplicate_cols = df_date.columns.difference(df_static_data.columns)
+
+
             df_date = pd.merge(df_date[no_duplicate_cols], df_static_data, how='left', on=["ts_code"], suffixes=["", ""], sort=False).set_index("ts_code")  # add static data
             df_date.insert(loc=0, column='trade_date', value=int(trade_date))
 
@@ -1499,7 +1515,8 @@ def get_example_column(asset="E", freq="D", numeric_only=False, notna=True, mark
     elif asset == "I":
         ts_code = "000001.SH"
     elif asset == "FD":
-        ts_code = "150008.SZ"
+        df_ts_code=get_ts_code(a_asset=["FD"])
+        ts_code = df_ts_code.index[0]
     elif asset == "F":
         ts_code = "AUDCAD.FXCM"
     elif asset == "G":
@@ -1669,21 +1686,25 @@ def update_all_in_one_cn(night_shift=False, until=999):
     # 2.2. ASSET
     for asset in ["I","E","FD"]:
         LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=8)  # 40 mins
-    update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
+    #update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
 
     # 2.3 OTHERS
     update_asset_qdii()
     update_hk_hsgt()
 
+    # 2.4 DATE
+    update_date(asset="E", freq="D")
+    update_date(asset="FD", freq="D")
+
     if until <= 3:
-        return print(f"update_all_in_one_cn2 finished until {until}")
+        return print(f"update_all_in_one_cn finished until {until}")
 
 
     # 2.3 UPDATE FUND HOLDING
     import Atest
     Atest.asset_fund_portfolio()
     if until <= 4:
-        return print(f"update_all_in_one_cn2 finished until {until}")
+        return print(f"update_all_in_one_cn finished until {until}")
 
 
 
@@ -1718,10 +1739,8 @@ if __name__ == '__main__':
         # update_all_in_one_us()
         #update_all_in_one_us()
         #update_asset_stock_market_all()
-        for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset="E").items()):
-            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": ["E"]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
 
-        #update_all_in_one_cn_v2()
+        update_hk_hsgt()
         #update_all_in_one_hk()
         #update_all_in_one_us()
 

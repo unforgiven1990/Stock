@@ -493,7 +493,10 @@ def mom(df, abase, freq, inplace, name, cols):
 
 @alpha_wrap
 def rsi(df, abase, freq, inplace, name, cols):
-    df[name] = talib.RSI(df[abase], timeperiod=freq)
+    try:
+        df[name] = talib.RSI(df[abase], timeperiod=freq)
+    except:
+        df[name] = np.nan
     return alpha_return(locals())
 
 

@@ -155,7 +155,7 @@ def my_get_industries(name="zjw"):
 def my_get_industry_stocks(industry_code):
     return get(func=get_industry_stocks,fname="get_industry_stocks",kwargs={"industry_code":industry_code})
 
-def my_get_price_5min(security, start_date, end_date, frequency="5m"):
+def my_get_price_10min(security, start_date, end_date, frequency="10m"):
     start_date = f"{start_date[0:4]}-{start_date[4:6]}-{start_date[6:8]} 09:00:00"
     end_date = f"{end_date[0:4]}-{end_date[4:6]}-{end_date[6:8]} 15:00:00"
     return get(func=get_price,fname="get_price",kwargs=locals())

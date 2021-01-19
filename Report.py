@@ -234,7 +234,6 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
 
 
 if __name__ == '__main__':
-    #TODO: when do stock revert? volume, time to previous date, ma, market, boll , supportresistance
     import Alpha
     do=1
 

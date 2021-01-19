@@ -117,6 +117,7 @@ def plot_autocorrelation(series):
     plt.show()
 
 #TODO secondary axis plot
+
 def plot_chart(df, columns, d_special={}):
     df_copy = df[columns].copy().reset_index(drop=True)
     df_copy.plot(legend=True)
