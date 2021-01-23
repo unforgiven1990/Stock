@@ -1429,8 +1429,8 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
     """RANK ALL STUFF"""
     # qdii rank = all time rank. how much all time qdii attention does this stock get
     try:
-        df_result["qdii_rank"] = df_result[f"qdii_research/period"] + df_result[f"qdii_grade/period"]
-        df_result["qdii_rank"] = df_result["qdii_rank"].rank(ascending=False)
+        df_result["qdii_rank"] = (df_result[f"qdii_research/period"].rank(ascending=False) + df_result[f"qdii_grade/period"].rank(ascending=False))
+        df_result["qdii_rank"] = df_result["qdii_rank"].rank(ascending=True)
     except:
         df_result["qdii_rank"] = np.nan
 

@@ -990,8 +990,12 @@ def send_mail(trade_string="what to buy and sell"):
 
 
 
-
-
+def trade_date_to_vieable(df):
+    a=df.index
+    a=a.astype(str)
+    df["index"]=a.str.slice(0,4)+"年"+a.str.slice(4,6)+"月"+a.str.slice(6,8)+"日"
+    df.index=df["index"]
+    df.index.name="trade_date"
 
 def secondsToStr(elapsed=None):
     return strftime("%Y-%m-%d %H:%M:%S", localtime()) if elapsed is None else str(timedelta(seconds=elapsed))

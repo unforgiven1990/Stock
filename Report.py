@@ -71,12 +71,17 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
 
 
     # 2. skip if report already exists
+
     if trade_date == -1:
         trade_date = LB.latest_trade_date(market=market)
-    if os.path.isfile(f"D:\Stock/Market/{market}/Report/report_{trade_date}.xlsx"):
+
+    excel_path = f"Market/{market}/Report/{market}_report_{trade_date}.xlsx"
+    if os.path.isfile(f"D:\Stock/{excel_path}"):
         print(f"REPORT {trade_date} EXISTS!")
+        LB.file_open(f"D:\Stock/Market/{market}/Report/{market}_report_{trade_date}.xlsx")
         return
 
+    print(f"start report for {trade_date}")
 
 
 
@@ -218,7 +223,18 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
             if asset in ["E","FD","I"]:
                 df_selected_assets=df_selected_assets.loc[:, df_selected_assets.columns != 'asset']
                 df_selected_assets = DB.add_static_data(df_selected_assets, asset=[asset],market=market)
+
+            # reorder columsn for better visibility
+            ideal_order_column = ["name", "period", "offensive_rank", "defensive_rank", "allround_rank_geo", "qdii_rank", "opportunity_rank", "investment_rank"]
+            first_order_column = [x for x in ideal_order_column if x in df_selected_assets.columns]
+            second_order_column = [x for x in df_selected_assets.columns if x not in first_order_column]
+            print(first_order_column)
+            print(second_order_column)
+            df_selected_assets= df_selected_assets[first_order_column+second_order_column]
+
+            #add to collection
             d_df[f"{asset}_{min_period}"] = df_selected_assets
+
 
 
     df_north=DB.get(a_path=("Market/CN/Asset/E/hsgt/hsgt"))
@@ -226,9 +242,12 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
         df_north=DB.update_hk_hsgt()
     d_df[f"north"]=df_north
 
+
+
+
     LB.to_csv_feather(pd.DataFrame(),a_path=LB.a_path(f"Market/{market}/Report/folder"))
-    LB.to_excel(path=f"Market/{market}/Report/report_{trade_date}.xlsx",d_df=d_df,color=True)
-    LB.file_open(f"D:\Stock/Market/{market}/Report/report_{trade_date}.xlsx")
+    LB.to_excel(path=excel_path,d_df=d_df,color=True)
+    LB.file_open(f"D:\Stock/Market/{market}/Report/{market}_report_{trade_date}.xlsx")
 
 
 
@@ -239,11 +258,11 @@ if __name__ == '__main__':
 
 
     if do==1:
-        for market in ["CN"]:
-            create_daily_report(update_DB=True,market=market)
+        for market in ["CN","HK"]:
+            create_daily_report(update_DB=False,market=market)
 
 
-
+    market="CN"
     if do==2:
         for pf in ["p","f"]:
             df_sh = DB.get_asset("399006.SZ", asset="I")
@@ -253,7 +272,7 @@ if __name__ == '__main__':
             df_trade_date=df_trade_date[["399006.SZ"]]
             for trade_date in df_trade_date.index:
                 try:
-                    xls = pd.ExcelFile(f"Market/CN/Report/report_{trade_date}.xlsx")
+                    xls = pd.ExcelFile(f"Market/CN/Report/{market}_report_{trade_date}.xlsx")
                 except:
                     continue
                 df_pgain = pd.read_excel(xls, sheet_name=f"{pf}gain")

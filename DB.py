@@ -779,6 +779,14 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     df[f"boll_low"]=np.nan
                     df[f"boll"]=np.nan
 
+                #expanding pe_ttm %: only to check if G pe_ttm is correct, can be deleted later
+                df["e_pe_ttm_pct_max"]=df["pe_ttm"].expanding(240).max()
+                df["e_pe_ttm_pct_min"]=df["pe_ttm"].expanding(240).min()
+                df["e_pe_ttm_pct"]= (((1 - 0) * ( df["pe_ttm"] - df["e_pe_ttm_pct_min"])) / (df["e_pe_ttm_pct_max"] - df["e_pe_ttm_pct_min"])) + 0
+                del df["e_pe_ttm_pct_max"]
+                del df["e_pe_ttm_pct_min"]
+
+
             LB.to_csv_feather(df=df, a_path=a_path, skip_csv=True, skip_feather=False)  # save space using feather, but cannot be opened by html
             print(offset ,asset, ts_code, freq, end_date, "UPDATED!", real_latest_trade_date)
             print("=" * 50)
@@ -1100,11 +1108,14 @@ def update_hk_hsgt():
 
     df_trade_date=df_trade_date[df_trade_date.index>start_date]
     for end_date in df_trade_date.index:
-        df=_API_Tushare.my_hsgt(start_date=str(end_date),end_date=str(end_date))
-        df=LB.df_reverse_reindex(df)
-        df=df.set_index("trade_date",drop=True)
-        df.index=df.index.astype(int)
-        df_result=df_result.append(df,sort=False,ignore_index=False)
+        try:
+            df=_API_Tushare.my_hsgt(start_date=str(end_date),end_date=str(end_date))
+            df=LB.df_reverse_reindex(df)
+            df=df.set_index("trade_date",drop=True)
+            df.index=df.index.astype(int)
+            df_result=df_result.append(df,sort=False,ignore_index=False)
+        except:
+            pass
 
     df_result=df_result.loc[df_result.index.drop_duplicates()]
     LB.to_csv_feather(df=df_result,a_path=a_path,skip_feather=True)
@@ -1395,7 +1406,7 @@ def get(a_path=[], set_index=""):  # read feather first
             return LB.set_index(func(a_path[counter]), set_index=set_index)
         except Exception as e:
             pass
-            #print(f"{func.__name__} error. now try", e)
+            #print(e)
     else:
         print("DB READ File Not Exist or set index wrong!", f"{a_path[0]} or {a_path[1]}")
         return pd.DataFrame()
@@ -1686,7 +1697,7 @@ def update_all_in_one_cn(night_shift=False, until=999):
     # 2.2. ASSET
     for asset in ["I","E","FD"]:
         LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=8)  # 40 mins
-    #update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
+    update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
 
     # 2.3 OTHERS
     update_asset_qdii()
@@ -1740,7 +1751,8 @@ if __name__ == '__main__':
         #update_all_in_one_us()
         #update_asset_stock_market_all()
 
-        update_hk_hsgt()
+        update_date(asset="E",freq="D")
+        update_date(asset="FD",freq="D")
         #update_all_in_one_hk()
         #update_all_in_one_us()
 
