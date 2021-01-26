@@ -8,6 +8,7 @@ import talib
 import xlsxwriter
 import threading
 import smtplib
+from pathlib import Path
 from email.message import EmailMessage
 import math
 import re
@@ -26,6 +27,16 @@ import numba
 import enum
 import pathlib
 import time
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import  formatdate
+from os.path import basename
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+
 
 pro = ts.pro_api('c473f86ae2f5703f58eecf9864fa9ec91d67edbc01e3294f6a4f9c32')
 ts.set_token("c473f86ae2f5703f58eecf9864fa9ec91d67edbc01e3294f6a4f9c32")
@@ -528,6 +539,32 @@ def c_index_name():
     return {"主板":"sh","中小板":"sz","创业板":"cy","科创板":"kc"}
 
 
+def col_dx():
+    return ["大","小"]
+
+def col_gd():
+    return ["高","低"]
+
+def col_translate():
+    """if True, then use 高低 else use 大小"""
+    return {
+        "turnover_rate":["换手率",True],
+        "amount":["成交额",False],
+        "total_mv":["总市值",False],
+        "close":["收盘价",False],
+        "pb":["市净率",True],
+        "vol":["交易量",False],
+        "pe_ttm":["市盈率",True],
+        "pgain5":["5日涨幅",False],
+        "pgain20":["20日涨幅",False],
+        "pgain60":["60日涨幅",False],
+        "pgain120":["120日涨幅",False],
+        "pgain240":["240日涨幅",False],
+            }
+
+
+
+
 
 def custom_quantile(df, column, p_setting=[0, 0.2, 0.4, 0.6, 0.8, 1], key_val=True):
     d_df = {}
@@ -988,7 +1025,64 @@ def send_mail(trade_string="what to buy and sell"):
     print("successfuly send...")
 
 
+def mail_to_multipart(mail):
+    """
+    Convert an email to a multipart email
+    :param mail: Email object
+    :return: None
+    """
+    if mail.is_multipart():
+        return mail
 
+    mail_new = MIMEMultipart("mixed")
+    headers = list((k, v) for (k, v) in mail.items() if k != "Content-Type")
+
+    for k, v in headers:
+        mail_new[k] = v
+
+    for k, v in headers:
+        del mail[k]
+
+    mail_new.attach(mail)
+    return mail_new
+
+def send_mail_report(trade_string="what to buy and sell",files=["test.csv"]):
+    sender_email = "sizhe.huang@guanyueinternational.com"
+    receiver = "sizhe.huang@guanyueinternational.com"
+
+    password = "inception0Ba22101964!"
+    msg = EmailMessage()
+    msg.set_content(trade_string)
+    today = pd.datetime.now().date()
+    msg['Subject'] = f"Stock {today.day}.{today.month}.{today.year}"
+    msg['From'] = "cj@python.org"
+    msg['To'] = "sizhe.huang@guanyueinternational.com"
+
+    for path in files:
+        part = MIMEBase('application', "octet-stream")
+        with open(path, 'rb') as file:
+            part.set_payload(file.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition',
+                        'attachment; filename="{}"'.format(Path(path).name))
+
+        part
+
+
+        print(msg.is_multipart())
+        msg = mail_to_multipart(msg)
+        print(msg.is_multipart())
+        msg.attach(part)
+
+
+    server = smtplib.SMTP_SSL("hwsmtp.exmail.qq.com", port=465)
+    server.ehlo()
+    server.login(sender_email, password)
+
+    print("login success...")
+    server.sendmail(sender_email, [receiver], msg.as_string())
+    server.close()
+    print("successfuly send...")
 
 def trade_date_to_vieable(df):
     a=df.index
@@ -1208,10 +1302,8 @@ def latest_trade_date(market="CN"):
 if __name__ == '__main__':
     import DB
 
-    a=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]+["A"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]
-
-    for i in a:
-        print(i)
+    df = DB.get_asset()
+    send_mail_report("test",["egal.csv"])
 
 
 else:  # IMPORTANT TO KEEP FOR SOUND AND TIME

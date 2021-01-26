@@ -123,13 +123,15 @@ def break_jq_limit_helper_xueqiu(code, limit=3000):
     df=finance.run_query(query(finance.STK_XUEQIU_PUBLIC).filter(finance.STK_XUEQIU_PUBLIC.code == code ))
     len_df_this = len(df)
     df_last = df
-
+    print(df)
     while len_df_this >= limit:
         day = df_last.at[len(df_last) - 1, "day"]
         df_this=finance.run_query(query(finance.STK_XUEQIU_PUBLIC).filter(finance.STK_XUEQIU_PUBLIC.code == code, finance.STK_XUEQIU_PUBLIC.day > day ))
+
         if (df_this.equals(df_last)):
             break
         df = df.append(df_this, sort=False, ignore_index=True).drop_duplicates(subset="day")
+
         len_df_this = len(df_this)
         df_last = df_this
     return df

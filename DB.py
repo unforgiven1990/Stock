@@ -439,12 +439,25 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             df = tushare_limit_breaker(func=_API_Tushare.my_fund_nav, kwargs={"ts_code": ts_code}, limit=1000)
             LB.df_reverse_reindex(df)
 
+            if df.empty:
+                return pd.DataFrame()
+
             df_helper = pd.DataFrame()
+            df_helper["trade_date"]=df.index
+            df_helper["ts_code"]=df["ts_code"]
             for ohlc in ["open", "high", "low", "close"]:
-                df_helper[ohlc] = df["unit_nav"].astype(int)
-            df_helper["trade_date"] = df["ann_date"]
-            df_helper["pct_chg"] = df_helper["open"].pct_change()
+                try:
+                    df_helper[ohlc] = df["accum_nav"].astype(float)
+                except:
+                    df_helper[ohlc] = 1
+
+            try:
+                df_helper["pct_chg"] = df_helper["open"].pct_change()
+            except:
+                df_helper["pct_chg"] = np.nan
+
             df = df_helper
+
             return LB.df_reverse_reindex(df)
 
         else:
@@ -660,14 +673,16 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     else:
                         df_fun = _API_Tushare.my_query(api_name="daily_basic", ts_code=ts_code, start_date=asset_latest_trade_date, end_date=end_date)
 
+                    a_fun_cols=["turnover_rate", "pe_ttm", "pb", "total_share", "total_mv"]
                     try:  # new stock can cause error here
-                        df_fun = df_fun[["trade_date", "turnover_rate", "pe_ttm", "pb", "total_share", "total_mv"]]
+                        df_fun = df_fun[["trade_date"]+a_fun_cols]
                         df_fun["total_share"] = df_fun["total_share"] * 10000
                         df_fun["total_mv"] = df_fun["total_mv"] * 10000
                         df_fun["trade_date"] = df_fun["trade_date"].astype(int)
                         df = pd.merge(df, df_fun, how='left', on=["trade_date"], suffixes=[False, False], sort=False).set_index("trade_date")
                     except Exception as e:
-                        print("error fun", e)
+                        for col in a_fun_cols:
+                            df[col]=np.nan
 
                     #skip fundamentals and other indicator in minified version
                     if False:
@@ -728,6 +743,8 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             elif (asset == "FD" and freq == "D"):
                 if complete_new_update:
                     df = helper_FD(ts_code, freq, asset, start_date, end_date)
+                    if df.empty:
+                        continue
                     df = set_index_helper(df)
                 else:
                     df = helper_FD(ts_code, freq, asset, asset_latest_trade_date, end_date)
@@ -780,11 +797,20 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     df[f"boll"]=np.nan
 
                 #expanding pe_ttm %: only to check if G pe_ttm is correct, can be deleted later
-                df["e_pe_ttm_pct_max"]=df["pe_ttm"].expanding(240).max()
-                df["e_pe_ttm_pct_min"]=df["pe_ttm"].expanding(240).min()
-                df["e_pe_ttm_pct"]= (((1 - 0) * ( df["pe_ttm"] - df["e_pe_ttm_pct_min"])) / (df["e_pe_ttm_pct_max"] - df["e_pe_ttm_pct_min"])) + 0
-                del df["e_pe_ttm_pct_max"]
-                del df["e_pe_ttm_pct_min"]
+                if asset=="E":
+                    try:
+                        df["e_pe_ttm_pct_max"]=df["pe_ttm"].expanding(240).max()
+                        df["e_pe_ttm_pct_min"]=df["pe_ttm"].expanding(240).min()
+                        df["e_pe_ttm_pct"]= (((1 - 0) * ( df["pe_ttm"] - df["e_pe_ttm_pct_min"])) / (df["e_pe_ttm_pct_max"] - df["e_pe_ttm_pct_min"])) + 0
+                        del df["e_pe_ttm_pct_max"]
+                        del df["e_pe_ttm_pct_min"]
+                    except:
+                        df["e_pe_ttm_pct"] = np.nan
+
+                #check for ndays max or min. Combine all signals into one column
+                #if stock is at 240 day high, then it is automatically at 5,10,60 day high
+                df["isminmax"]=Alpha.isminmax(df=df,abase="close",inplace=False)
+
 
 
             LB.to_csv_feather(df=df, a_path=a_path, skip_csv=True, skip_feather=False)  # save space using feather, but cannot be opened by html
@@ -884,7 +910,13 @@ def update_asset_G(asset=["E"], night_shift=True, step=1):
             # put all instances together
             if not df_instance.empty:
                 df_instance = df_instance.div(df_instance["divide_helper"], axis=0)
-                df_instance = df_instance[example_column]  # align columns
+
+                try:
+                    df_instance = df_instance[example_column]  # align columns
+                except:
+
+                    available_cols=[x for x in example_column if x in df_instance.columns]
+                    df_instance=df_instance[available_cols]
                 df_instance.insert(0, "ts_code", f"{group}_{instance}")
 
                 #create new ohlc because it will not be accurate. We must use total_mv as our only guide
@@ -1430,12 +1462,24 @@ def get_last_trade_date(freq="D", market="CN", type=str):
 
     #Depends on the hour: if it is 2am morning, then it is latest trade date, but market has not opended yet.
     today_hour=datetime.datetime.now().hour
-    if today_hour > 16:
-        # after 1 hour of stock close. Should get latest data
+    date=datetime.datetime.now().date()
+    date=str(date)
+    date=f"{date[0:4]}{date[5:7]}{date[8:10]}"
+    last_saved_date=df_trade_date.index[-1]
+
+    if int(date)>int(last_saved_date):
         return type(df_trade_date.index[-1])
+    elif int(date)==int(last_saved_date):
+        if today_hour > 16:
+            # after 1 hour of stock close. Should get latest data
+            return type(df_trade_date.index[-1])
+        else:
+            # return the yesterdays trade date as the latest
+            return type(df_trade_date.index[-2])
     else:
-        #return the yesterdays trade date as the latest
-        return type(df_trade_date.index[-2])
+        print("OOPs bug?")
+        raise AssertionError
+
 
 
 def get_next_trade_date(freq="D", market="CN"):
@@ -1459,7 +1503,7 @@ def get_ts_code(a_asset=["E"], market="CN", d_queries={}):
         if (asset == "FD") and market == "CN":
             df = df[df["delist_date"].isna()]
             # df = df[df["type"]=="契约型开放式"] #契约型开放式 and 契约型封闭式 都可以买 在线交易，封闭式不能随时赎回，但是可以在二级市场上专卖。 开放式更加资本化，发展的好可以扩大盘面，发展的不好可以随时赎回。所以开放式的盘面大小很重要。越大越稳重
-            df = df[df["market"] == "E"] #Only consider ETF and LOF because they can be publicly traded
+            df = df[(df["fund_type"]=="股票型")|(df["fund_type"]=="混合型")] #Only consider ETF and LOF because they can be publicly traded
 
         if d_queries:
             a_queries = d_queries[asset]
@@ -1751,8 +1795,8 @@ if __name__ == '__main__':
         #update_all_in_one_us()
         #update_asset_stock_market_all()
 
-        update_date(asset="E",freq="D")
-        update_date(asset="FD",freq="D")
+
+
         #update_all_in_one_hk()
         #update_all_in_one_us()
 

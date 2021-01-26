@@ -179,16 +179,19 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
                 #calculate bollinger completely TODO REMOVE
                 for freq in ["D","W"]:
                     # transform to D or W
-                    df_asset_freq = LB.df_to_freq(df_asset, freq=freq)
+                    try:
+                        df_asset_freq = LB.df_to_freq(df_asset, freq=freq)
 
-                    # bollinger
-                    df_asset_freq[f"boll_up"], df_asset_freq[f"boll_mid"], df_asset_freq[f"boll_low"] = talib.BBANDS(df_asset_freq["close"], 20, 2, 2)
+                        # bollinger
+                        df_asset_freq[f"boll_up"], df_asset_freq[f"boll_mid"], df_asset_freq[f"boll_low"] = talib.BBANDS(df_asset_freq["close"], 20, 2, 2)
 
-                    # scale to between 0 and 1
-                    df_asset_freq[f"boll_scale"] = (((1 - 0) * (df_asset_freq["close"] - df_asset_freq[f"boll_low"])) / (df_asset_freq[f"boll_up"] - df_asset_freq[f"boll_low"])) + 0
+                        # scale to between 0 and 1
+                        df_asset_freq[f"boll_scale"] = (((1 - 0) * (df_asset_freq["close"] - df_asset_freq[f"boll_low"])) / (df_asset_freq[f"boll_up"] - df_asset_freq[f"boll_low"])) + 0
 
-                    # take the last sample as NOW
-                    df_selected_assets.at[ts_code, f"boll_NOW{freq}"] = df_asset_freq[f"boll_scale"].iat[-1]
+                        # take the last sample as NOW
+                        df_selected_assets.at[ts_code, f"boll_NOW{freq}"] = df_asset_freq[f"boll_scale"].iat[-1]
+                    except:
+                        pass
 
                 # NOW vs historic PE and PB
                 if asset == "E" and market=="CN":
@@ -247,7 +250,9 @@ def create_daily_report(trade_date=-1,update_DB=False ,market="CN"):
 
     LB.to_csv_feather(pd.DataFrame(),a_path=LB.a_path(f"Market/{market}/Report/folder"))
     LB.to_excel(path=excel_path,d_df=d_df,color=True)
-    LB.file_open(f"D:\Stock/Market/{market}/Report/{market}_report_{trade_date}.xlsx")
+    excel_path=f"D:\Stock/Market/{market}/Report/{market}_report_{trade_date}.xlsx"
+    LB.file_open(excel_path)
+    LB.send_mail_report(f"{trade_date[0:4]}年{trade_date[4:6]}月{trade_date[6:8]}日 report",excel_path)
 
 
 
@@ -256,10 +261,9 @@ if __name__ == '__main__':
     import Alpha
     do=1
 
-
     if do==1:
         for market in ["CN","HK"]:
-            create_daily_report(update_DB=False,market=market)
+            create_daily_report(update_DB=True,market=market)
 
 
     market="CN"

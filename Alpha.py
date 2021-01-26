@@ -1686,6 +1686,48 @@ def ismin(df, abase, emin, inplace, name, cols, q=0.80, score=10):
     df[f"{name}"] = df[f"{name}"].replace(to_replace=0, value=-score)
     return alpha_return(locals())
 
+@alpha_wrap
+def isminmax(df, abase, inplace, name, cols, a_freqs=[20,60,120,240,500]):
+    """
+    the bigger the difference emin/abase, the closer they are together. the smaller the difference they far away they are
+    """
+    a_min = []
+    a_max = []
+    for freqn in a_freqs+[ "all"]:
+        if freqn == "all":
+            df[f"min_helper{freqn}"] = df[abase].expanding(40).min()
+            df[f"max_helper{freqn}"] = df[abase].expanding(40).max()
+        else:
+            df[f"min_helper{freqn}"] = df[abase].rolling(freqn).min()
+            df[f"max_helper{freqn}"] = df[abase].rolling(freqn).max()
+
+        value_replace = 999 if freqn == "all" else freqn
+        df[f"ismin{freqn}"] = (df[abase] == df[f"min_helper{freqn}"]).astype(int)
+        df[f"ismin{freqn}"] = df[f"ismin{freqn}"].replace(1, -value_replace)
+        df[f"ismin{freqn}"] = df[f"ismin{freqn}"].replace(0, np.nan)
+
+        df[f"ismax{freqn}"] = (df[abase] == df[f"max_helper{freqn}"]).astype(int)
+        df[f"ismax{freqn}"] = df[f"ismax{freqn}"].replace(1, value_replace)
+        df[f"ismax{freqn}"] = df[f"ismax{freqn}"].replace(0, np.nan)
+        a_min += [f"ismin{freqn}"]
+        a_max += [f"ismax{freqn}"]
+
+    df[f"minall"] = df[a_min].min(axis=1)
+    df[f"maxall"] = df[a_max].max(axis=1)
+    df[name] = df[f"minall"].add(df[f"maxall"], fill_value=0)
+
+    for freqn in a_freqs+[ "all"]:
+        del df[f"ismin{freqn}"]
+        del df[f"ismax{freqn}"]
+        del df[f"min_helper{freqn}"]
+        del df[f"max_helper{freqn}"]
+    del df["minall"]
+    del df["maxall"]
+
+    return alpha_return(locals())
+
+
+
 """currently un touched. add back later"""
 @alpha_wrap
 def cdl(df, abase):
