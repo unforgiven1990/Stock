@@ -1053,8 +1053,7 @@ def send_mail_report(trade_string="what to buy and sell",files=["test.csv"]):
     password = "inception0Ba22101964!"
     msg = EmailMessage()
     msg.set_content(trade_string)
-    today = pd.datetime.now().date()
-    msg['Subject'] = f"Stock {today.day}.{today.month}.{today.year}"
+    msg['Subject'] = trade_string
     msg['From'] = "cj@python.org"
     msg['To'] = "sizhe.huang@guanyueinternational.com"
 
@@ -1066,12 +1065,12 @@ def send_mail_report(trade_string="what to buy and sell",files=["test.csv"]):
         part.add_header('Content-Disposition',
                         'attachment; filename="{}"'.format(Path(path).name))
 
-        part
 
 
-        print(msg.is_multipart())
+
+        #print(msg.is_multipart())
         msg = mail_to_multipart(msg)
-        print(msg.is_multipart())
+        #print(msg.is_multipart())
         msg.attach(part)
 
 
@@ -1299,11 +1298,39 @@ def latest_trade_date(market="CN"):
 
 
 
+def test():
+    print("test")
+    import DB,Alpha
+    df=DB.get_asset("600585.SH")
+
+    freqn=(20,2)
+    for multiplier in [1,2,3,5,10]:
+
+        freq1=freqn[0]*multiplier
+        freq2=freqn[1]*multiplier
+
+        try:
+            df[f"boll_up.{freq1}.{freq2}"], egal, df[f"boll_low.{freq1}.{freq2}"] = talib.BBANDS(df["close"], freq1, freq2, freq2)
+            df[f"boll_freq.{freq1}.{freq2}"]= Alpha.fol_rolling_norm(df=df,abase=f"boll_up.{freq1}.{freq2}",inplace=False)
+            #df[f"boll.{freq1}.{freq2}"] = (((1 - 0) * (df["close"] - df[f"boll_low"])) / (df[f"boll_up"] - df[f"boll_low"])) + 0
+        except:
+            df[f"boll_up.{freq1}.{freq2}"] = np.nan
+            df[f"boll_low.{freq1}.{freq2}"] = np.nan
+            #df[f"boll"] = np.nan
+
+    df.to_csv("fu.csv")
+
+
 if __name__ == '__main__':
     import DB
+    import Report
 
-    df = DB.get_asset()
-    send_mail_report("test",["egal.csv"])
+
+
+
+
+
+
 
 
 else:  # IMPORTANT TO KEEP FOR SOUND AND TIME

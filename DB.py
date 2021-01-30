@@ -12,6 +12,7 @@ import traceback
 import Alpha
 import datetime
 import talib
+import glob
 
 
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -209,9 +210,13 @@ def update_ts_code(asset="E", market="CN", night_shift=True):
                 df.at[ts_code, "state_company"] = True if counter >= 1 else False
 """
         elif asset == "I":
+            #update national CN stock index
             df_SSE = _API_Tushare.my_index_basic(market='SSE')
             df_SZSE = _API_Tushare.my_index_basic(market='SZSE')
             df = df_SSE.append(df_SZSE, sort=False).set_index("ts_code")
+
+            #update international index
+
 
         elif asset == "FD":
             df_E = _API_Tushare.my_fund_basic(market='E')
@@ -443,7 +448,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                 return pd.DataFrame()
 
             df_helper = pd.DataFrame()
-            df_helper["trade_date"]=df.index
+            df_helper["trade_date"]=df["end_date"]
             df_helper["ts_code"]=df["ts_code"]
             for ohlc in ["open", "high", "low", "close"]:
                 try:
@@ -456,6 +461,8 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             except:
                 df_helper["pct_chg"] = np.nan
 
+            #VERY IMPORTANT. otherwise normal FD and .OF will have inconsistent columns
+            df_helper["vol"]=np.nan
             df = df_helper
 
             return LB.df_reverse_reindex(df)
@@ -1247,8 +1254,9 @@ def update_date(asset="E", freq="D", market="CN", night_shift=False, step=1, sta
         raise BaseException("STEP only 1 or -1 !!!!")
 
     # latest example column
-    example_column = get_example_column(asset=asset, freq=freq, market=market, numeric_only=True, notna=False)
-    example_column =["ts_code"]+example_column
+    example_column = get_example_column(asset=asset, freq=freq, market=market, numeric_only=False, notna=False)
+    example_column = example_column
+    #currently: INDEX = TRADE_DATE DOES NOT COUNT AS COLUMN. ADDED LATER
 
     # init df
     df_static_data = get_ts_code(a_asset=[asset])
@@ -1259,6 +1267,13 @@ def update_date(asset="E", freq="D", market="CN", night_shift=False, step=1, sta
     d_queries_ts_code = LB.c_G_queries() if asset == "G" else {}
     d_preload = preload(asset=asset, freq=freq, step=1, period_abv=40, d_queries_ts_code=d_queries_ts_code)
     d_lookup_table = {ts_code: (0 if step == 1 else len(df) - 1) for ts_code, df in d_preload.items()}
+
+    #prestart convert all index into str
+    for ts_code, df_asset in d_preload.items():
+        #added because for some reason it index where int
+        #df_asset.index=df_asset.index.astype(str)
+        #print(df_asset)
+        pass
 
     for trade_date in df_trade_dates.index[::step]:  # IMPORTANT! do not modify step, otherwise lookup will not work
         a_path = LB.a_path(f"Market/{market}/Date/{asset}/{freq}/{trade_date}")
@@ -1325,16 +1340,21 @@ def update_date(asset="E", freq="D", market="CN", night_shift=False, step=1, sta
 
             # create df_date from a_date_result
 
-            df_date = pd.DataFrame(data=a_date_result, columns=example_column)
+
+            try:
+                df_date = pd.DataFrame(data=a_date_result, columns=example_column)
+            except Exception as e:
+                print(e)
+
             if df_date.empty:
-                print(f"{trade_date} probably has no stock? Continued anyway")
+                print(f"{trade_date} probably has no stock? Continued anyway. First FD starts at 2005 omg")
                 continue
 
             # remove duplicate columns that also exist in static data. Then merge
             no_duplicate_cols = df_date.columns.difference(df_static_data.columns)
-
-
             df_date = pd.merge(df_date[no_duplicate_cols], df_static_data, how='left', on=["ts_code"], suffixes=["", ""], sort=False).set_index("ts_code")  # add static data
+
+
             df_date.insert(loc=0, column='trade_date', value=int(trade_date))
 
             LB.to_csv_feather(df_date, a_path, skip_csv=True)
@@ -1565,21 +1585,22 @@ def get_stock_market_overview(market="CN",fields=["close","vol"]):
 
 def get_example_column(asset="E", freq="D", numeric_only=False, notna=True, market="CN"):
     """get the latest column of the asset file"""
-    if asset == "E":
-        ts_code = "000001.SZ"
-    elif asset == "I":
-        ts_code = "000001.SH"
-    elif asset == "FD":
-        df_ts_code=get_ts_code(a_asset=["FD"])
-        ts_code = df_ts_code.index[0]
-    elif asset == "F":
-        ts_code = "AUDCAD.FXCM"
-    elif asset == "G":
-        ts_code = "area_安徽"
-    else:
-        ts_code = "000001.SZ"
 
-    df = get_asset(ts_code, asset, freq, market=market)
+    path=f"Market/{market}/Asset/{asset}/{freq}/"
+    directory = os.fsencode(path)
+    for file in os.listdir(directory):
+        filename = os.fsdecode(file)
+        print(f"try to use {filename} as example column for {market} {asset} {freq}")
+        if filename.endswith(".feather"):
+            print(path+filename)
+            df=pd.read_feather(path+filename)
+            break
+        elif filename.endswith(".csv"):
+            df=pd.read_csv(path+filename)
+            break
+
+    df=df.set_index("trade_date",drop=True)
+
     if notna:
         df = df.dropna(how="all", axis=1)
 
@@ -1713,9 +1734,13 @@ def update_all_in_one_cn(night_shift=False, until=999):
     # 1.0. ASSET - Indicator bundle
     if night_shift:
         # E: update each E asset one after another
-        for asset in ["E", "FD"]:
+        for asset in ["E"]:
             for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
                 LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
+
+    for asset in ["FD"]:
+        for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
+            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": True, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
 
     if until <= 1:
         return print(f"update_all_in_one_cn2 finished until {until}")
@@ -1788,20 +1813,11 @@ if __name__ == '__main__':
     pr.enable()
     try:
         night_shift = True
-         # update concept is very very slow. = Night shift
-
-        # update_all_in_one_hk()
-        # update_all_in_one_us()
-        #update_all_in_one_us()
-        #update_asset_stock_market_all()
 
 
-
-        #update_all_in_one_hk()
-        #update_all_in_one_us()
-
-
-
+        asset="FD"
+        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver": False}, splitin=8)  # 40 mins
+        update_date(asset="FD",night_shift=True)
 
 
 

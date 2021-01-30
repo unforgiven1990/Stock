@@ -94,7 +94,7 @@ def draw_text(section, text, fontsize=h1, left=True,fill="#ffffff",yoffset=0):
     return idraw
 
 
-def get_bar2(s,path,y_limit=[-300, 250]):
+def get_bar2(s,path,y_limit=[-350, 250]):
 
     #y axis transform
     y = []
@@ -126,8 +126,8 @@ def get_bar2(s,path,y_limit=[-300, 250]):
         # UNDER each bar
         plt.annotate(x[i][:-2], xy=(x[i], -60), ha='center', va='bottom', color="white", size=12)
 
-    plt.annotate("新低", xy=(1.5, -200), ha='center', va='bottom', color="white", size=40)
-    plt.annotate("新高", xy=(5.5, -200), ha='center', va='bottom', color="white", size=40)
+    plt.annotate("新低", xy=(1.5, -300), ha='center', va='bottom', color="white", size=40)
+    plt.annotate("新高", xy=(5.5, -300), ha='center', va='bottom', color="white", size=40)
 
     # use this to draw histogram of your data
     # scale down the chart by making the y axis seem taller
@@ -635,13 +635,15 @@ def section_stock_gain(trade_date, df_date,bcolor):
     #add average gain
     avg_gain=df_date["pct_chg"].mean()
     avg_gain = round(avg_gain, 2)
-    avg_gain= f"平均涨跌\n+{avg_gain}%" if avg_gain>0 else f"平均涨跌\n+{avg_gain}%"
+    avg_gain= f"平均涨跌\n+{avg_gain}%" if avg_gain>0 else f"平均涨跌\n{avg_gain}%"
     idraw.text((title_padding[0], 450), avg_gain, font=mega4, fill="white")
 
-    zd_ratio=len(df_date[df_date["pct_chg"]>9.5])/len(df_date[df_date["pct_chg"]<-9.5])
-    zd_ratio=int(zd_ratio)
-    idraw.text((1400, 450), f"涨跌停比\n≈{zd_ratio}:1", font=mega4, fill="white",align="right")
-
+    try:
+        zd_ratio=len(df_date[df_date["pct_chg"]>9.5])/len(df_date[df_date["pct_chg"]<-9.5])
+        zd_ratio=int(zd_ratio)
+        idraw.text((1400, 450), f"涨跌停比\n≈{zd_ratio}:1", font=mega4, fill="white",align="right")
+    except:
+        pass
 
     # add histogram
     histo = Image.open(get_bar(s=df_date["pct_chg"],path = f'Plot/report_D/{trade_date}/histo.png'))
@@ -842,7 +844,14 @@ def section_alltimehighlow(trade_date, df_date,bcolor):
 
     # use this to draw histogram of your data
     path = f'Plot/report_D/{trade_date}/allimeghighlow.png'
-    chart = Image.open(get_bar2(s=df_date_groupby["pct_chg"],path=path))
+
+    s=df_date_groupby["pct_chg"]
+    s=s.replace(120,60)
+    s=s.replace(-120,-60)
+    s=s.replace(500,240)
+    s=s.replace(-500,-240)
+
+    chart = Image.open(get_bar2(s=s,path=path))
     cw,ch=chart.size
     section.paste(chart, (int((width-cw)/2), 300), mask=chart)
     return section
@@ -1150,11 +1159,11 @@ def create_infographic(trade_date=LB.latest_trade_date()):
         y_helper += section.size[1]
 
 
-
     #show and save
     infographic.show()
-    infographic.save(f'Plot/report_D/{trade_date}/report_{trade_date}.png')
-
+    path=f'Plot/report_D/{trade_date}/report_{trade_date}.png'
+    infographic.save(path)
+    return path
 
 
 if __name__ == '__main__':

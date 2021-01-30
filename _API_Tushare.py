@@ -189,10 +189,16 @@ def my_hsgt(start_date="00000000",end_date="99999999"):
 def my_hk_hold(ts_code):
     return get(func=pro.hk_hold, fname="pro.hk_hold", kwargs=locals())
 
+def my_index_global(**kwargs):
+    return get(func=pro.index_global, fname="pro.index_global", kwargs=locals())
+
 
 if __name__ == '__main__':
+    """
+    TODO kwargize all tushare_api functions to make htem more versatile
+    """
     import DB
     ts_code = "600887.SH"
-    df=DB.tushare_limit_breaker(pro.hk_hold, {"ts_code":ts_code,"start_date":"20180101"}, limit=1000)
-    df=LB.df_reverse_reindex(df)
-    df.to_csv(f"{ts_code}.csv", encoding="utf-8_sig")
+    df=my_index_global(ts_code="XIN9",start_date="00000000",end_date="99999999")
+    print(df)
+    df.to_csv(f"global today.csv", encoding="utf-8_sig")

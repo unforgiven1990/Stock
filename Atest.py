@@ -14,6 +14,7 @@ import itertools
 import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
 import builtins
+import _API_Tushare
 # from Alpha import supersmoother_3p, highpass, cg_Oscillator, macd, ismax, ismin
 
 sys.setrecursionlimit(1000000)
@@ -767,6 +768,129 @@ def asset_start_season_initiator(asset="I", a_n=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 
 
 
 
+def asset_seasonal_first_week_year():
+
+    """
+    Result:
+    年底效应要比年初效应明显
+    可以比较的是每年过年5五天+后5天
+
+    :return:
+    """
+    df_trade_date = DB.get_trade_date()
+    df_trade_date = df_trade_date[df_trade_date.index >= 20110101]
+    df_trade_date["counter"] = range(1, len(df_trade_date) + 1)
+
+    # find all week before and after ny
+    a_year_end = []
+    a_year_begin = []
+    for year in df_trade_date["year"].unique():
+        df_last_jan_master = df_trade_date[df_trade_date["year"] == year]
+        df_last_jan = df_last_jan_master.tail(5)
+
+        for index in df_last_jan.index:
+            a_year_end += [index]
+
+        df_last_jan = df_last_jan_master.head(5)
+        for index in df_last_jan.index:
+            a_year_begin += [index]
+
+    for index, asset in zip(["000001.SH", "399001.SZ", "399006.SZ", "asset_E","IXIC"], ["I", "I", "I", "G","Egal"]):
+        if index != "IXIC":
+            df = DB.get_asset(index, asset=asset)
+        else:
+            pass
+        end = df.loc[a_year_end, "pct_chg"].mean()
+        begin = df.loc[a_year_begin, "pct_chg"].mean()
+        normalmean = df["pct_chg"].mean()
+        print(index, "last 5 day of year", end / normalmean)
+        print(index, "first 5 day of year", begin / normalmean)
+
+
+def asset_seasonal_last_jan_week():
+    """index 1 week before and after ny
+
+    result:
+    -的确每年一月份最后一周都跌的厉害
+    """
+
+    df_trade_date=DB.get_trade_date()
+    df_trade_date=df_trade_date[df_trade_date.index >= 20110101]
+    df_trade_date["counter"]=range(1, len(df_trade_date) + 1)
+
+    #find all week before and after ny
+    a_jan=[]
+    for year in df_trade_date["year"].unique():
+        df_last_jan=df_trade_date[df_trade_date["year"]==year]
+        df_last_jan=df_last_jan[df_last_jan["month"]==1]
+        df_last_jan=df_last_jan.tail(5)
+
+        for index in df_last_jan.index:
+            a_jan+=[index]
+
+
+    for index,asset in zip(["000001.SH","399001.SZ","399006.SZ","asset_E","IXIC"],["I","I","I","G","egal"]):
+        if index != "IXIC":
+            df = DB.get_asset(index, asset=asset)
+        else:
+            pass
+        jan = df.loc[a_jan,"pct_chg"].mean()
+        normalmean=df["pct_chg"].mean()
+        print(index,"last 5 days in jan",jan,normalmean)
+
+
+def asset_seasonal_before_ny():
+    """index 1 week before and after ny
+
+    result:
+    - after ny is better than before new year
+    - before new year is best when 5 days before
+    -Summary: buy 5 days before ny and hold 30 days after ny.
+
+    """
+
+    df_trade_date=DB.get_trade_date()
+    df_trade_date=df_trade_date[df_trade_date.index >= 20110101]
+    df_trade_date["counter"]=range(1, len(df_trade_date) + 1)
+
+    for days in [5,10,15,20, 30]:
+
+
+        #find all week before and after ny
+        df_ny=df_trade_date[df_trade_date["new_year"]==1]
+        a_trade_dates_before=[]
+        a_trade_dates_after=[]
+        for trade_date in df_ny.index:
+            c=df_trade_date.at[trade_date,"counter"]
+
+            for i in range(0,days):
+                df_filter=df_trade_date[df_trade_date["counter"]==c-i]
+                try:
+                    a_trade_dates_before+=[int(df_filter.index[0])]
+                except:
+                    pass
+
+            for i in range(0,days):
+                df_filter=df_trade_date[df_trade_date["counter"]==c+i+1]
+                try:
+                    a_trade_dates_after+=[int(df_filter.index[0])]
+                except:
+                    pass
+
+
+
+        for index,asset in zip(["000001.SH","399001.SZ","399006.SZ","asset_E","IXIC"],["I","I","I","G","egal"]):
+            if index != "IXIC":
+                df = DB.get_asset(index, asset=asset)
+            else:
+                pass
+            mean_before = df.loc[a_trade_dates_before,"pct_chg"].mean()
+            mean_after = df.loc[a_trade_dates_after,"pct_chg"].mean()
+            normalmean=df["pct_chg"].mean()
+            print(days,index,"before",mean_before/normalmean)
+            print(days,index,"after",mean_after/normalmean)
+
+
 def asset_seasonal_statistic_sh():
     #use sh index as source
     df_trade_date=DB.get_trade_date()
@@ -1209,6 +1333,7 @@ def asset_fund_portfolio():
 
     1. at all time
     2. at current time
+    TODO check if during the 3 month time the stock has 增发，减发
     """
 
     #INIT
@@ -1218,15 +1343,17 @@ def asset_fund_portfolio():
     for year in range_obj:
         for season in [1,2,3,4]:
             df_result[f"{year}_{season}_count"] = 0
+            df_result[f"{year}_{season}_amount"] = 0
             df_result[f"{year}_{season}_rank"] = 0
 
 
     #loop over each fund
-    for ts_code in df_ts_code.index:
+    for ts_code in df_ts_code.index[::1]:
         try:
             df_asset=DB.get_asset(ts_code=ts_code,asset="FD",freq="fund_portfolio")
         except:
             continue
+
 
         if df_asset.empty:
             continue
@@ -1235,15 +1362,37 @@ def asset_fund_portfolio():
 
 
         df_asset["count"]=1
-        df_asset=df_asset[df_asset["stk_mkv_ratio"]>0]#remove IPO stocks that are not on market yet. I don't know why and funds buy them.
+        #df_asset=df_asset[df_asset["stk_mkv_ratio"]>0]#remove IPO stocks that are not on market yet. I don't know why and funds buy them.
         LB.trade_date_to_calender(df=df_asset,add=["year","season"])
+        df_result.at[ts_code,"period"]=len(df_asset)
 
         for year in range_obj:
             df_asset_filtered=df_asset[df_asset["year"]==year]
             for season in [1,2,3,4]:
                 df_asset_filtered2=df_asset_filtered[df_asset_filtered["season"]==season ]
                 df_asset_count=df_asset_filtered2.groupby("symbol").sum()
-                df_result[f"{year}_{season}_count"]=df_result[f"{year}_{season}_count"].add(df_asset_count["count"],fill_value=0)
+
+
+                try:
+                    df_result[f"{year}_{season}_count"]=df_result[f"{year}_{season}_count"].add(df_asset_count["count"],fill_value=0)
+                    df_result[f"{year}_{season}_amount"]=df_result[f"{year}_{season}_amount"].add(df_asset_count["amount"],fill_value=0)
+                except Exception as e:
+                    print(e)
+                #calculate how much a stock has gained compared to last season
+
+
+    #a very inefficient way to calculate pct of qddi buying the stock share
+    a_last_season = []
+    for year in range_obj:
+        for season in [1, 2, 3, 4]:
+            a_last_season += [f"{year}_{season}_amount"]
+
+    for firsts,seconds in LB.custom_pairwise_overlap(a_last_season):
+        try:
+            df_result[f"{seconds}_pct"]=df_result[f"{seconds}"].div(df_result[f"{firsts}"])
+        except Exception as e:
+            print(e)
+
 
     #rank these results
     for year in range_obj:
@@ -2117,7 +2266,7 @@ if __name__ == '__main__':
 
     #asset_bullishness2()
     #asset_bollinger()
-    asset_bullishness(a_asset=["E"],step=1,market="CN")
-    #asset_fund_portfolio()
+
+    asset_fund_portfolio()
 
 
