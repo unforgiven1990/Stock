@@ -500,6 +500,19 @@ def rsi(df, abase, freq, inplace, name, cols):
     return alpha_return(locals())
 
 
+@alpha_wrap
+def boll(df, abase, freq1,freq2, inplace, name, cols):
+    try:
+        df[f"{name}top"], egal, df[f"{name}bot"] = talib.BBANDS(df[abase], freq1, freq2, freq2)
+        df[f"{name}"] = (((1 - 0) * (df[abase] - df[f"{name}bot"])) / (df[f"{name}top"] - df[f"{name}bot"])) + 0
+    except:
+        df[f"{name}top"] = np.nan
+        df[f"{name}bot"] = np.nan
+        df[f"{name}"] = np.nan
+    return alpha_return(locals())
+
+
+
 # ((close_today - close_ndays ago)/close_ndays_ago) * 100
 @alpha_wrap
 def rocr(df, abase, freq, inplace, name, cols):

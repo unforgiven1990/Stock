@@ -16,6 +16,8 @@ import DB
 import UI
 import builtins
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import matplotlib.patches as mpatches
 import matplotlib
 from matplotlib.patches import Rectangle
 import matplotlib.patches as patches
@@ -54,6 +56,8 @@ treemapgreen1="#43A047"
 treemapgreen2="#388E3C"
 treemapgreen3="#2E7D32"
 treemapgreen4="#1B5E20"
+
+a_line_plot_color=[yellow,white]
 
 title_padding=(100,100)
 matplotlib.rc('font', family='Microsoft Yahei')
@@ -94,7 +98,7 @@ def draw_text(section, text, fontsize=h1, left=True,fill="#ffffff",yoffset=0):
     return idraw
 
 
-def get_bar2(s,path,y_limit=[-350, 250]):
+def get_bar2(s,path,y_limit=[-550, 250]):
 
     #y axis transform
     y = []
@@ -121,19 +125,21 @@ def get_bar2(s,path,y_limit=[-350, 250]):
     # draw values as text
     for enum, i in enumerate(range(len(y))):
         # OVER each bar
-        plt.annotate(f"{y[i]}家", xy=(x[i], y[i]+15), ha='center', va='bottom', color="white", size=12)
+        plt.annotate(f"{y[i]}家", xy=(x[i], y[i]+5), ha='center', va='bottom', color="white", size=12)
 
         # UNDER each bar
-        plt.annotate(x[i][:-2], xy=(x[i], -60), ha='center', va='bottom', color="white", size=12)
+        plt.annotate(x[i][:-2], xy=(x[i], -30), ha='center', va='bottom', color="white", size=12)
 
-    plt.annotate("新低", xy=(1.5, -300), ha='center', va='bottom', color="white", size=40)
-    plt.annotate("新高", xy=(5.5, -300), ha='center', va='bottom', color="white", size=40)
+    plt.annotate("新低", xy=(1.5, -120), ha='center', va='bottom', color="white", size=40)
+    plt.annotate("新高", xy=(5.5, -120), ha='center', va='bottom', color="white", size=40)
 
     # use this to draw histogram of your data
     # scale down the chart by making the y axis seem taller
     axes = plt.gca()
     axes.set_ylim(y_limit)
     plt.axis('off')
+    fig = plt.gcf()
+    fig.set_size_inches(6, 10)
 
     # add color
     for i in range(len(x)):
@@ -234,7 +240,7 @@ def section_title(trade_date, df_date,bcolor):
 
 def section_end(trade_date, df_date,bcolor):
     # add init
-    section = Image.new('RGBA', (width, 1000), bcolor)
+    section = Image.new('RGBA', (width, 1500), bcolor)
 
     title = f"更多数据就在 Pollipoll.com"
     draw_text(section=section, text=title, fontsize=h1, left=False, fill="#ffffff")
@@ -242,18 +248,80 @@ def section_end(trade_date, df_date,bcolor):
     path = f'Plot/static/title.png'
     chart = Image.open(path)
     chart = chart.resize((1700, 350))
-    yoffset=400
+    yoffset=900
     cw, ch = chart.size
     section.paste(chart, (int((width - cw) / 2) - 25, yoffset+20), mask=chart)
     title = f"今日收盘 {trade_date[0:4]}.{trade_date[4:6]}.{trade_date[6:8]}. "
-    draw_text(section=section, text=title, fontsize=h1, left=False, fill="#343434",yoffset=yoffset)
+    draw_text(section=section, text="投资有风险\n入市需谨慎", fontsize=mega2, left=False, fill="#ffffff",yoffset=200)
+    draw_text(section=section, text=title, fontsize=h1, left=False, fill="#343434", yoffset=yoffset)
 
     return section
 
 
+def linechart_helper(name,trade_date,a_index):
+    df_ts_code=DB.get_ts_code(a_asset=["E","I","FD"])
+    fig = plt.gcf()
+    a_labelhelper=["大市值","小市值"]
+    a_legend=[]
+    a_minmax=[]
+    def round_down(num, divisor):
+        return num - (num % divisor)
+    for i,index in enumerate(a_index):
+        df_asset = DB.get_asset(ts_code=index, freq="D", asset="I")
+        df_asset = df_asset[(df_asset.index >= int(trade_date)-10000)]
+        df_asset = df_asset[(df_asset.index <= int(trade_date))]
+        LB.trade_date_to_vieable(df_asset)
+
+
+        df_asset.index.name = ""
+
+        df_asset["close"]=df_asset["close"]/df_asset.at[df_asset["close"].first_valid_index(),"close"]
+        df_asset["close"] =df_asset["close"]*100-100
+        index_name=df_ts_code.at[index,"name"]
+        df_asset[f"{index_name}"]=df_asset["close"]
+
+        ax = df_asset[index_name].plot(color=a_line_plot_color[i], linewidth=1,legend=True)
+        a_minmax+=[round_down(df_asset[index_name].min(),10),df_asset[index_name].max()]
+        a_legend+=[mpatches.Patch(color=a_line_plot_color[i], label=f'{a_labelhelper[i]}={index_name}')]
+
+
+    #ax.set_ylim([df_asset["close"].min(), df_asset["close"].max() + 20])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color(white)
+    ax.spines['bottom'].set_color(white)
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter())
+
+    plt.yticks(np.arange(min(a_minmax), max(a_minmax), 10))
+
+    plt.yticks(color="#ffffff")
+    plt.xticks(color="#ffffff")
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=-45,fontsize=8)
+    ax.tick_params(axis='x', colors="#ffffff")
+    ax.tick_params(axis='y', colors="#ffffff")
+    #plt.annotate('今天', xy=(len(df_asset), df_asset["close"].iat[-1] + 15), xytext=(len(df_asset), df_asset["close"].iat[-1] + 50), ha='center', color=white, arrowprops=dict(facecolor=yellow, color=yellow, shrink=0.05))
+    fig.set_size_inches(4, 2)
+
+
+
+    leg = plt.legend(handles=a_legend,mode="expand",bbox_to_anchor = (0.5, 1.2),ncol=len(a_index))
+    leg.get_frame().set_alpha(0)
+    for text in leg.get_texts():
+        text.set_color(white)
+
+    # egal, (ax1) = plt.subplots(1, 1, sharex=True)
+    #plt.fill_between(df_asset["close"].index, df_asset["close"], 0, color=yellow)
+
+    # use this to draw histogram of your data
+    path = f'Plot/report_D/{trade_date}/{name}.png'
+    img_saver(path=path, dpi=470)
+    plt.clf()
+    return path
+
+
 def section_pe(trade_date, df_date, bcolor):
     # add init
-    section = Image.new('RGBA', (width, 6800), bcolor)
+    section = Image.new('RGBA', (width, 6400), bcolor)
     idraw = draw_text(section, f"申万一级行业市盈率")
     countfrom=20050101
 
@@ -352,14 +420,17 @@ def section_pe(trade_date, df_date, bcolor):
     #创业板chart
     df_asset_G = DB.get_asset(ts_code=f"market_创业板", freq="D", asset="G")
     df_asset_G = df_asset_G[(df_asset_G.index >= countfrom) ]
+    df_asset_G = df_asset_G[(df_asset_G.index <= int(trade_date)) ]
     LB.trade_date_to_vieable(df_asset_G)
     df_asset_G.index.name=""
-    ax=df_asset_G["pe_ttm"].plot(color='#ffffff',linewidth=1)
+    ax=df_asset_G["pe_ttm"].plot(color=yellow,linewidth=1)
     ax.set_ylim([df_asset_G["pe_ttm"].min(), df_asset_G["pe_ttm"].max()+20])
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color(white)
     ax.spines['bottom'].set_color(white)
+    print(type(fig))
+
     plt.yticks(color="#ffffff")
     plt.xticks(color="#ffffff")
     plt.setp(ax.xaxis.get_majorticklabels(), rotation=-45)
@@ -368,9 +439,11 @@ def section_pe(trade_date, df_date, bcolor):
     plt.ylabel('市盈率 PE', color="white")
     plt.annotate('今天', xy=(len(df_asset_G), df_asset_G["pe_ttm"].iat[-1]+15), xytext=(len(df_asset_G), df_asset_G["pe_ttm"].iat[-1]+50),ha='center', color=white, arrowprops=dict(facecolor=yellow,color=yellow, shrink=0.05))
     plt.annotate('创业板历史市盈率', xy=(int(len(df_asset_G)/2), df_asset_G["pe_ttm"].max()+15),ha='center', color=white)
-
-
     fig.set_size_inches(4, 2)
+
+    #egal, (ax1) = plt.subplots(1, 1, sharex=True)
+    plt.fill_between(df_asset_G["pe_ttm"].index, df_asset_G["pe_ttm"], 0, color=yellow)
+
 
     # use this to draw histogram of your data
     path = f'Plot/report_D/{trade_date}/cy.png'
@@ -459,7 +532,7 @@ def section_abs_pe_backup(trade_date, df_date,bcolor):
 
 def section_divergence(trade_date, df_date, bcolor):
     # add init
-    section = Image.new('RGBA', (width, 2700), bcolor)
+    section = Image.new('RGBA', (width, 1000), bcolor)
     idraw = draw_text(section, f"市场分化特征")
 
     s_pct_chg=df_date["pct_chg"].sort_values(ascending=True)
@@ -549,83 +622,98 @@ def section_divergence(trade_date, df_date, bcolor):
     section.paste(chart, (int((width-cw)/2), 400), mask=chart)
 
 
-
-    #gain by groups data
-    a_cont_cols=["turnover_rate","vol","amount","total_mv","close","pb","pe_ttm"]+[f"pgain{x}" for x in [5,20,60,240]]
-
-
-    df_group_result=pd.DataFrame()
-    for group in a_cont_cols:
-        d_quantile = LB.custom_quantile(df=df_date,p_setting=[0,0.1,0.9,1],key_val=False,column=group)
-        for key, df_quantile in d_quantile.items():
-            if key==f"0,0.1":
-                df_group_result.at[f"{group}_top","gain"]=df_quantile["pct_chg"].mean()
-            elif key == f"0.9,1":
-                df_group_result.at[f"{group}_bot", "gain"] = df_quantile["pct_chg"].mean()
-
     if False:
-        a_disc_cols = ["sw_industry2"]
-        for col in a_disc_cols:
-            for instance in df_date[col].unique():
-                df_date_group=df_date[df_date[col]==instance]
-                if len(df_date_group)<=8:#disregard very small groups
-                    df_group_result.at[f"{col}_{instance}","gain"] =np.nan
-                else:
-                    df_group_result.at[f"{col}_{instance}","gain"]=df_date_group["pct_chg"].mean()
-
-    # display data
-    displayn=5
-    df_group_result=df_group_result.sort_values("gain",ascending=True)
-
-    xpos = [1 for x in range(displayn)]
-    xneg = [-1 for x in range(displayn)]
-    y = [x for x in range(displayn)]
-
-    #negative
-    line = plt.barh(y, xpos)  # background
-    for i in range(0, len(line)):
-        line[i].set_color(red)
-
-    # positive
-    lines = plt.barh(y, xneg)
-    for i in range(0, len(lines)):
-        lines[i].set_color(green)
-
-    ax = plt.gca()
-    ax.set_xlim([-2, 2])
-    ax.set_ylim([-1, len(y)])
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.xaxis.set_visible(False)
-    ax.yaxis.set_visible(False)
-
-    for posneg in [1,-1]:
-        for i,(index,gain) in enumerate(zip(df_group_result.index[::posneg],df_group_result["gain"][::posneg])):
-            if i>=displayn:
-                continue
-
-            array=LB.col_translate()[index[:-4]]
-            chinesename=array[0]
-            looup= LB.col_gd() if array[1] == True else LB.col_gd()
-            value=looup[0] if index[-3:]=="top" else looup[1]
+        #gain by groups data
+        a_cont_cols=["turnover_rate","vol","amount","total_mv","close","pb","pe_ttm"]+[f"pgain{x}" for x in [5,20,60,240]]
 
 
-            plt.annotate(f"{chinesename}{value}{gain}", xy=(0.5*posneg*(-1), displayn - i - 1), ha='center', va='bottom', color="white", size=18)
+        df_group_result=pd.DataFrame()
+        for group in a_cont_cols:
+            d_quantile = LB.custom_quantile(df=df_date,p_setting=[0,0.1,0.9,1],key_val=False,column=group)
+            for key, df_quantile in d_quantile.items():
+                if key==f"0,0.1":
+                    df_group_result.at[f"{group}_top","gain"]=df_quantile["pct_chg"].mean()
+                elif key == f"0.9,1":
+                    df_group_result.at[f"{group}_bot", "gain"] = df_quantile["pct_chg"].mean()
+
+        if False:
+            a_disc_cols = ["sw_industry2"]
+            for col in a_disc_cols:
+                for instance in df_date[col].unique():
+                    df_date_group=df_date[df_date[col]==instance]
+                    if len(df_date_group)<=8:#disregard very small groups
+                        df_group_result.at[f"{col}_{instance}","gain"] =np.nan
+                    else:
+                        df_group_result.at[f"{col}_{instance}","gain"]=df_date_group["pct_chg"].mean()
+
+        # display data
+        displayn=5
+        df_group_result=df_group_result.sort_values("gain",ascending=True)
+
+        xpos = [1 for x in range(displayn)]
+        xneg = [-1 for x in range(displayn)]
+        y = [x for x in range(displayn)]
+
+        #negative
+        line = plt.barh(y, xpos)  # background
+        for i in range(0, len(line)):
+            line[i].set_color(red)
+
+        # positive
+        lines = plt.barh(y, xneg)
+        for i in range(0, len(lines)):
+            lines[i].set_color(green)
+
+        ax = plt.gca()
+        ax.set_xlim([-2, 2])
+        ax.set_ylim([-1, len(y)])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+
+        for posneg in [1,-1]:
+            for i,(index,gain) in enumerate(zip(df_group_result.index[::posneg],df_group_result["gain"][::posneg])):
+                if i>=displayn:
+                    continue
+
+                array=LB.col_translate()[index[:-4]]
+                chinesename=array[0]
+                looup= LB.col_gd() if array[1] == True else LB.col_gd()
+                value=looup[0] if index[-3:]=="top" else looup[1]
 
 
-    plt.yticks(color="#ffffff")
-    fig = plt.gcf()
-    fig.set_size_inches(15, 8)
+                plt.annotate(f"{chinesename}{value}{round(gain,1)}", xy=(0.5*posneg*(-1), displayn - i - 1), ha='center', va='bottom', color="white", size=18)
 
-    path = f'Plot/report_D/{trade_date}/zhuli.png'
-    img_saver(path=path, dpi=280)
-    chart = Image.open(path)
-    cw2, ch2 = chart.size
-    section.paste(chart, (int((width - cw2) / 2), 400+ch+0), mask=chart)
+
+        plt.yticks(color="#ffffff")
+        fig = plt.gcf()
+        fig.set_size_inches(15, 8)
+
+        path = f'Plot/report_D/{trade_date}/zhuli.png'
+        img_saver(path=path, dpi=280)
+        chart = Image.open(path)
+        cw2, ch2 = chart.size
+        section.paste(chart, (int((width - cw2) / 2), 400+ch+0), mask=chart)
 
     return section
+
+
+def section_size(trade_date, df_date,bcolor):
+    # add init
+    section = Image.new('RGBA', (width, 2700), bcolor)
+    idraw = draw_text(section, f"市场风格:规格")
+
+    path=linechart_helper(name="size",trade_date=trade_date,a_index=[f"000903.SH","000852.SH"])
+
+    chart = Image.open(path)
+    cw, ch = chart.size
+    section.paste(chart, (int((width - cw) / 2), 300), mask=chart)
+    return section
+
+
 
 def section_stock_gain(trade_date, df_date,bcolor):
     # add init
@@ -640,7 +728,7 @@ def section_stock_gain(trade_date, df_date,bcolor):
 
     try:
         zd_ratio=len(df_date[df_date["pct_chg"]>9.5])/len(df_date[df_date["pct_chg"]<-9.5])
-        zd_ratio=int(zd_ratio)
+        zd_ratio=round(zd_ratio,1)
         idraw.text((1400, 450), f"涨跌停比\n≈{zd_ratio}:1", font=mega4, fill="white",align="right")
     except:
         pass
@@ -836,7 +924,7 @@ def section_index(trade_date, df_date,bcolor):
 def section_alltimehighlow(trade_date, df_date,bcolor):
 
     # add init
-    section = Image.new('RGBA', (width, 3500), bcolor)
+    section = Image.new('RGBA', (width, 1800), bcolor)
     idraw = draw_text(section, f"历史新高低价")
 
     df_date["isminmax"]=df_date["isminmax"].replace(np.nan,0)
@@ -857,31 +945,72 @@ def section_alltimehighlow(trade_date, df_date,bcolor):
     return section
 
 
+def bar_helper(x,y,trade_date,y_label=""):
+    # calculate data
+    y_fake = [100 for x in y]
+
+    # fake
+    line = plt.bar(x, y_fake)  # background
+    for i in range(0, len(line)):
+        line[i].set_color(yellow)
+
+    # real
+    line = plt.bar(x, y)
+    for i in range(0, len(line)):
+        line[i].set_color(white)
+    axes = plt.gca()
+    axes.set_ylim([-20, 110])
+    plt.axis('off')
+    fig = plt.gcf()
+    fig.set_size_inches(6, 4)
+
+    # draw values as text
+    for enum, i in enumerate(range(len(y))):
+        # OVER each bar
+        if y[i] <= 75:
+            add = 5
+            color = white
+        else:
+            add = -20
+            color = gray
+
+
+        plt.annotate(f"{y[i]}{y_label}", xy=(i, y[i] + add), ha='center', va='bottom', color=color, size=24)
+
+        # UNDER each bar
+        plt.annotate(x[i], xy=(i, -10), ha='center', va='bottom', color="white", size=11)
+
+    # use this to draw histogram of your data
+    path = f'Plot/report_D/{trade_date}/rsi.png'
+    img_saver(path=path, dpi=350)
+    return path
+
 def section_ma(trade_date, df_date,bcolor):
 
     # add init
-    section = Image.new('RGBA', (width, 1800), bcolor)
+    section = Image.new('RGBA', (width, 1700), bcolor)
     idraw = draw_text(section, f"均线统计")
 
-    #calculate data
-    a_y_abs=[]
-    a_colors=[treemapred1,treemapred2,treemapred3,treemapred4]
-    for enum,freqn in enumerate([5,20,60,240]):
-        y_abs=len(df_date[df_date["close"]>=df_date[f"ma{freqn}"]])
-        a_y_abs += [y_abs]
-        pct=y_abs/len(df_date)
 
-        yes_name=f"{freqn}日 均线上"
-        no_name=f"{freqn}日 均线下"
-        yes=int(pct*100)
-        no=100-yes
-        s=pd.Series()
-        s.at[yes_name]=yes
-        s.at[no_name]=no
-        ax=s.plot(kind='pie',labels=["",""],colors=[white,a_colors[enum]],startangle=90,wedgeprops={"edgecolor":"white",'linewidth': 1})
-        plt.axis('off')
+    # calculate data
+    if False:
 
+        a_y_abs = []
+        a_colors = [treemapred1, treemapred2, treemapred3, treemapred4]
+        for enum, freqn in enumerate([5, 20, 60, 240]):
+            y_abs = len(df_date[df_date["close"] >= df_date[f"ma{freqn}"]])
+            a_y_abs += [y_abs]
+            pct = y_abs / len(df_date)
 
+            yes_name = f"{freqn}日 均线上"
+            no_name = f"{freqn}日 均线下"
+            yes = int(pct * 100)
+            no = 100 - yes
+            s = pd.Series()
+            s.at[yes_name] = yes
+            s.at[no_name] = no
+            ax = s.plot(kind='pie', labels=["", ""], colors=[white, a_colors[enum]], startangle=90, wedgeprops={"edgecolor": "white", 'linewidth': 1})
+            plt.axis('off')
 
         radius=200
         space=600
@@ -893,107 +1022,49 @@ def section_ma(trade_date, df_date,bcolor):
         cw, ch = chart.size
         section.paste(chart, (int((width - cw) / 2), int((space-ch)/2)+offset), mask=chart)
 
-
-    if False:
+    else:
         #display data
-        x=[x for x in d_ma.keys()]
-        y=[x for x in d_ma.values()]
-        y_fake=[100 for x in d_ma.values()]
+        y = []
+        a_y_abs=[]
+        for freqn in [5, 20, 60, 240]:
+            df_filter=df_date[df_date["close"]>df_date[f"ma{freqn}"]]
+            ma_pct=len(df_filter)/len(df_date)
+            y+=[int(ma_pct*100)]
+            a_y_abs+=[len(df_filter)]
+            x=[f"{x}日 均线上" for x in [5, 20, 60, 240]]
 
-        line=plt.bar(x, y_fake)#background
-        for i in range(0,len(line)):
-            line[i].set_color(yellow)
+        chart = Image.open(bar_helper(x,y,trade_date,"%"))
+        cw,ch=chart.size
+        section.paste(chart, (int((width-cw)/2), 300), mask=chart)
 
-        line=plt.bar(x, y)
-        for i in range(0,len(line)):
-            line[i].set_color(green)
-        axes = plt.gca()
-        axes.set_ylim([-20, 110])
-        plt.axis('off')
-        fig = plt.gcf()
-        fig.set_size_inches(6, 4)
+    explain=f"如：有 {y[0]}% 的股票今日收盘在5日均线上。"
+    w, h = idraw.textsize(explain, font=h2)
+    idraw.text((int((width - w) / 2), 1400), explain, font=h2, fill=white)
 
-        # draw values as text
-        for enum, i in enumerate(range(len(y))):
-            # OVER each bar
-            if y[i]<=80:
-                add=(5,1)
-                color="white"
-            else:
-                add = (-16,-21)
-                color="black"
-
-            plt.annotate(f"{y[i]}%", xy=(i, y[i]+add[0]), ha='center', va='bottom', color=color, size=24)
-            plt.annotate(f"{a_y_abs[i]}家收盘", xy=(i, y[i]+add[1]), ha='center', va='bottom', color=color, size=8)
-
-            # UNDER each bar
-            plt.annotate(x[i], xy=(i, -10), ha='center', va='bottom', color="white", size=11)
-
-            # use this to draw histogram of your data
-            path = f'Plot/report_D/{trade_date}/ma.png'
-            img_saver(path=path,dpi=350)
-            chart = Image.open(path)
-
-            cw,ch=chart.size
-            section.paste(chart, (int((width-cw)/2), 300), mask=chart)
     return section
 
 
 def section_rsi(trade_date, df_date,bcolor):
 
     # add init
-    section = Image.new('RGBA', (width, 1500), bcolor)
+    section = Image.new('RGBA', (width, 1700), bcolor)
     idraw = draw_text(section, f"RSI值统计")
 
-    #calculate data
-    d_ma={}
-    for freqn in [5,20,60,240]:
-        y_abs=df_date[f"rsi{freqn}"].mean()
-        d_ma[f"{freqn}日 RSI"]=round(y_abs,1)
-
-    #display data
-    x=[x for x in d_ma.keys()]
-    y=[x for x in d_ma.values()]
-    y_fake = [100 for x in d_ma.values()]
-
-    #fake
-    line=plt.bar(x, y_fake)  # background
-    for i in range(0,len(line)):
-        line[i].set_color(yellow)
-
-    #real
-    line=plt.bar(x, y)
-    for i in range(0,len(line)):
-        line[i].set_color(green)
-    axes = plt.gca()
-    axes.set_ylim([-20, 110])
-    plt.axis('off')
-    fig = plt.gcf()
-    fig.set_size_inches(6, 4)
-
-    # draw values as text
-    for enum, i in enumerate(range(len(y))):
-        # OVER each bar
-        if y[i]<=80:
-            add=(5,1)
-            color="white"
-        else:
-            add = (-12,-16)
-            color="black"
-
-        plt.annotate(f"{y[i]}", xy=(i, y[i]+add[0]), ha='center', va='bottom', color=color, size=24)
-        plt.annotate(f"所有股票平均", xy=(i, y[i]+add[1]), ha='center', va='bottom', color=color, size=8)
-
-        # UNDER each bar
-        plt.annotate(x[i], xy=(i, -10), ha='center', va='bottom', color="white", size=11)
-
-    # use this to draw histogram of your data
-    path = f'Plot/report_D/{trade_date}/rsi.png'
-    img_saver(path=path,dpi=350)
-    chart = Image.open(path)
+    # display data
+    x=[]
+    y=[]
+    for freqn in [5, 20, 60, 240]:
+        y+= [round(df_date[f"rsi{freqn}"].mean(), 1)]
+        x+=[f"{freqn}日 RSI"]
+    chart = Image.open(bar_helper(x,y,trade_date,""))
 
     cw,ch=chart.size
     section.paste(chart, (int((width-cw)/2), 300), mask=chart)
+
+    explain=f"如：所有股票5日RSI均值为{y[0]}。"
+    w, h = idraw.textsize(explain, font=h2)
+    idraw.text((int((width - w) / 2), 1400), explain, font=h2, fill=white)
+
     return section
 
 
@@ -1002,7 +1073,6 @@ def section_nsmoney(trade_date, df_date,bcolor):
 
     # add init
     section = Image.new('RGBA', (width, 2300), bcolor)
-    idraw = draw_text(section, f"南北资金")
 
     #calculate data
     df_nsmoney=DB.get(a_path=LB.a_path("Market/CN/Asset/E/hsgt/hsgt"))
@@ -1015,8 +1085,6 @@ def section_nsmoney(trade_date, df_date,bcolor):
     df_nsmoney.index = df_nsmoney["date"]
     df_nsmoney.index.name =""
 
-
-
     #display data
     for i, (name,nb) in enumerate(zip(["north","south"],["北","南"])):
 
@@ -1027,8 +1095,8 @@ def section_nsmoney(trade_date, df_date,bcolor):
         else:
             plt.ylabel('百万元', color="white")
 
-        ax=df_nsmoney[f"{name}_money"].plot(color='#ffffff', legend=False, linewidth=2)
-        df_nsmoney["zero"].plot(color='#ffffff', legend=False, linewidth=1)
+        ax=df_nsmoney[f"{name}_money"].plot(color=yellow, legend=False, linewidth=2)
+        df_nsmoney["zero"].plot(color=white, legend=False, linewidth=1)
         plt.axis("on")
 
 
@@ -1044,8 +1112,8 @@ def section_nsmoney(trade_date, df_date,bcolor):
         ax.tick_params(axis="y",color="white")
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=-45)
 
-        label = f"{nb}向资金"
-        plt.annotate(label , xy=(120,df_nsmoney[f"{name}_money"].max()) , ha='center', va='bottom', color="white", size=12)
+        #label = f"{nb}向资金"
+        #plt.annotate(label , xy=(120,df_nsmoney[f"{name}_money"].max()) , ha='center', va='bottom', color="white", size=12)
 
         fig=plt.gcf()
         fig.set_size_inches(6, 2)
@@ -1055,6 +1123,8 @@ def section_nsmoney(trade_date, df_date,bcolor):
         chart = Image.open(path)
         cw,ch=chart.size
         section.paste(chart, (int((width-cw)/2), 350+i*1000), mask=chart)
+
+        idraw = draw_text(section, f"{nb}向资金",yoffset=i*(ch+250))
 
     return section
 
@@ -1122,7 +1192,10 @@ def section_industry1_gain(trade_date, df_date, bcolor):
         offset=350
         section.paste(chart, (int((width-cw)/2)-10, offset+enum*ch), mask=chart)
 
-        idraw.text((title_padding[0], ch + offset), "市值越大面积越大", font=h3, fill="#ffffff")
+        explain = f"市值越大面积越大"
+        w, h = idraw.textsize(explain, font=h2)
+        idraw.text((int((width - w) / 2), ch + offset), explain, font=h2, fill=white)
+
 
     return section
 
@@ -1136,8 +1209,8 @@ def create_infographic(trade_date=LB.latest_trade_date()):
         raise  AssertionError
     df_date = df_date[df_date["pct_chg"].notna()]
 
-    #add sections
-    a_func=[section_title, section_index, section_stock_gain,section_divergence, section_industry1_gain,section_pe, section_nsmoney, section_ma,section_alltimehighlow, section_rsi, section_end]
+    #add sections, size, value vs growth, industry, jijing vs husheng300, zhuti, beta
+    a_func=[section_title, section_index, section_stock_gain,section_divergence, section_size, section_industry1_gain, section_alltimehighlow, section_ma, section_rsi, section_nsmoney,section_pe,section_end]
     a_bcolor=["#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF"]
     a_bcolor=[None]*len(a_func)
     a_sections = [func(trade_date=trade_date, df_date=df_date,bcolor=bcolor) for func,bcolor in zip(a_func,a_bcolor)]
@@ -1147,7 +1220,7 @@ def create_infographic(trade_date=LB.latest_trade_date()):
     infographic = Image.new('RGBA', (width, autoheight), "#1D37FF")
 
     # add background
-    path = f'Plot/static/gradient.png'
+    path = f'Plot/static/gradient3.png'
     chart = Image.open(path)
     chart = chart.resize((2200, autoheight))
     infographic.paste(chart, (0, 0), )

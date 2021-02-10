@@ -795,6 +795,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     df[f"rsi{freqn}"] = Alpha.rsi(df=df,abase="close",freq=freqn,inplace=False)
 
                 # bollinger scale to between 0 and 1
+
                 try:
                     df[f"boll_up"], egal, df[f"boll_low"] = talib.BBANDS(df["close"], 20, 2, 2)
                     df[f"boll"] = (((1 - 0) * (df["close"] - df[f"boll_low"])) / (df[f"boll_up"] - df[f"boll_low"])) + 0
@@ -1661,7 +1662,7 @@ def add_asset_comparison(df, freq, asset, ts_code, a_compare_label=["open", "hig
     return pd.merge(df, df_compare, how='left', on=["trade_date"], suffixes=["", ""], sort=False)
 
 
-def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=40, d_queries_ts_code={}, reset_index=False,market="CN"):
+def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=40, d_queries_ts_code={}, reset_index=False,market="CN",show_text=True):
     """
     query_on_df: filters df_asset/df_date by some criteria. If the result is empty dataframe, it will NOT be included in d_result
     {"I": [f"ts_code in {c_index(market=market)}"]}
@@ -1688,15 +1689,16 @@ def preload(asset="E", freq="D", on_asset=True, step=1, query_df="", period_abv=
             else:  # only take df that satisfy ALL conditions and is non empty
                 d_result[index] = df.reset_index() if reset_index else df
         except Exception as e:
-            print(e)
-            pass
+            if show_text:
+                print(e)
             # print("preload exception", e)
     bar.close()
 
     # print not loaded index
-    a_notloaded = [print(f"not in preload: {x}") for x in df_index.index if x not in d_result]
-    print(f"LOADED : {len(d_result)}")
-    print(f"NOT LOADED : {len(a_notloaded)}")
+    if show_text:
+        a_notloaded = [print(f"not in preload: {x}") for x in df_index.index if x not in d_result]
+        print(f"LOADED : {len(d_result)}")
+        print(f"NOT LOADED : {len(a_notloaded)}")
     return d_result
 
 def preload_index(market="CN",step=1):
@@ -1732,15 +1734,13 @@ def update_all_in_one_cn(night_shift=False, until=999):
 
 
     # 1.0. ASSET - Indicator bundle
-    if night_shift:
-        # E: update each E asset one after another
-        for asset in ["E"]:
-            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
-                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
 
-    for asset in ["FD"]:
+    # E: update each E asset one after another
+    # E: hk_hold only 2 min limit
+    for asset in ["E","FD"]: #currently only hk hold and qdii hold
         for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
-            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": True, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
+            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
+
 
     if until <= 1:
         return print(f"update_all_in_one_cn2 finished until {until}")
@@ -1781,8 +1781,9 @@ def update_all_in_one_cn(night_shift=False, until=999):
 
 
     # 2.3 UPDATE FUND HOLDING
-    import Atest
-    Atest.asset_fund_portfolio()
+    if night_shift:
+        import Atest
+        Atest.asset_fund_portfolio()
     if until <= 4:
         return print(f"update_all_in_one_cn finished until {until}")
 
@@ -1813,12 +1814,10 @@ if __name__ == '__main__':
     pr.enable()
     try:
         night_shift = True
-
-
-        asset="FD"
-        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver": False}, splitin=8)  # 40 mins
-        update_date(asset="FD",night_shift=True)
-
+        #"E",  hk hold q权限那么小，每分钟才2次
+        for asset in ["FD"]:  # currently only hk hold and qdii hold
+            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
+                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
 
 
 

@@ -1245,6 +1245,13 @@ def interrupt_confirmed():
         return False
 
 
+def reorder_columns(df,a_columns):
+    first_order_column = [x for x in a_columns if x in df.columns]
+    second_order_column = [x for x in df.columns if x not in first_order_column]
+    return df[first_order_column + second_order_column]
+
+
+
 time_count = np.nan
 
 
@@ -1298,17 +1305,16 @@ def latest_trade_date(market="CN"):
 
 
 
-def test():
+def test_boll():
     print("test")
     import DB,Alpha
-    df=DB.get_asset("600585.SH")
-
+    df=DB.get_asset("399006.SZ",asset="I")
     freqn=(20,2)
     for multiplier in [1,2,3,5,10]:
 
         freq1=freqn[0]*multiplier
         freq2=freqn[1]*multiplier
-
+        print(multiplier)
         try:
             df[f"boll_up.{freq1}.{freq2}"], egal, df[f"boll_low.{freq1}.{freq2}"] = talib.BBANDS(df["close"], freq1, freq2, freq2)
             df[f"boll_freq.{freq1}.{freq2}"]= Alpha.fol_rolling_norm(df=df,abase=f"boll_up.{freq1}.{freq2}",inplace=False)
@@ -1318,16 +1324,35 @@ def test():
             df[f"boll_low.{freq1}.{freq2}"] = np.nan
             #df[f"boll"] = np.nan
 
-    df.to_csv("fu.csv")
+    df.to_csv("test_boll.csv")
 
 
 if __name__ == '__main__':
     import DB
-    import Report
+    import builtins
+    import LB
+    from scipy.stats import gmean
 
 
+    #check first month vs the whole year
+    df_result=pd.DataFrame()
+    for index in LB.c_index():
+        df_asset = DB.get_asset(ts_code=index,asset="I")
+        df_asset = LB.trade_date_to_calender(df_asset, ["year", "month"])
 
+        for year in range(2000,2022):
+            try:
+                df_asset_year=df_asset[df_asset["year"]==year]
 
+                df_asset_month=df_asset_year[df_asset_year["month"]==1]
+                df_result.at[ f"{year}",f"{index}_jan"] = gmean(df_asset_month["close"])
+
+                df_result.at[f"{year}", f"{index}_year"] = gmean(df_asset_year["close"])
+            except:
+                pass
+
+    print(df_result)
+    df_result.to_csv("seasona.csv")
 
 
 

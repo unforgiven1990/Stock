@@ -1326,7 +1326,7 @@ def asset_volatility(start_date, end_date, assets, freq):
 
 
 
-
+"""very slow, this can be done AFTER report or in midnight"""
 def asset_fund_portfolio():
     """
     this function creates a statistic about the most hold stock by fund
@@ -1334,12 +1334,23 @@ def asset_fund_portfolio():
     1. at all time
     2. at current time
     TODO check if during the 3 month time the stock has 增发，减发
+
+    count: how many qdii has it in portfolio
+    total_share: amount of shares available of one stock
+    amount: amount of shares all qdii together of one stock
+    qdii_ratio: qdii holding ratio from all available shares. e.g. 60% of all shares are hold by qdii
+    qdii_mom: if qdii_ratio has gained or lost in last season. e.g. 15% to 35% are institutional holders
     """
 
     #INIT
     df_ts_code=DB.get_ts_code(a_asset=["FD"])
     df_result = DB.get_ts_code(a_asset=["E"])
+    df_trade_date = DB.get_trade_date()
+
     range_obj=range(1990,LB.get_today_year()+1)
+    range_obj=range(2005,LB.get_today_year()+1)
+
+    #first fund starts in 2005
     for year in range_obj:
         for season in [1,2,3,4]:
             df_result[f"{year}_{season}_count"] = 0
@@ -1363,7 +1374,15 @@ def asset_fund_portfolio():
 
         df_asset["count"]=1
         #df_asset=df_asset[df_asset["stk_mkv_ratio"]>0]#remove IPO stocks that are not on market yet. I don't know why and funds buy them.
-        LB.trade_date_to_calender(df=df_asset,add=["year","season"])
+
+        df_asset["helper"]=df_asset.index
+        df_asset["year"]=df_asset["helper"].str.slice(0,4)
+        df_asset["year"] =df_asset["year"].astype(int)
+        df_asset["season"]=df_asset["helper"].str.slice(4,6)
+        df_asset["season"]=df_asset["season"].astype(int)
+        df_asset["season"]=df_asset["season"].map({3:1,6:2,9:3,12:4})
+
+
         df_result.at[ts_code,"period"]=len(df_asset)
 
         for year in range_obj:
@@ -1371,8 +1390,6 @@ def asset_fund_portfolio():
             for season in [1,2,3,4]:
                 df_asset_filtered2=df_asset_filtered[df_asset_filtered["season"]==season ]
                 df_asset_count=df_asset_filtered2.groupby("symbol").sum()
-
-
                 try:
                     df_result[f"{year}_{season}_count"]=df_result[f"{year}_{season}_count"].add(df_asset_count["count"],fill_value=0)
                     df_result[f"{year}_{season}_amount"]=df_result[f"{year}_{season}_amount"].add(df_asset_count["amount"],fill_value=0)
@@ -1380,16 +1397,47 @@ def asset_fund_portfolio():
                     print(e)
                 #calculate how much a stock has gained compared to last season
 
+                #add total share of that stock at the end of the season
+
+
 
     #a very inefficient way to calculate pct of qddi buying the stock share
+
+    #preparation, otherwise will be very slow
+    d_preload = DB.preload(asset="E")
+    df_trade_date=DB.get_trade_date()
+    for ts_code, df_asset in d_preload.items():
+        df_asset["year"]=df_trade_date["year"]
+        df_asset["season"]=df_trade_date["season"]
+        d_preload[ts_code]=df_asset
+
     a_last_season = []
     for year in range_obj:
         for season in [1, 2, 3, 4]:
-            a_last_season += [f"{year}_{season}_amount"]
+            print(f"add total share {year} {season}")
+            df_result[f"{year}_{season}_total_share"]=np.nan
+
+            for ts_code,df_asset in d_preload.items():
+                if df_asset.empty:
+                    continue
+
+                df_asset_filtered = df_asset[(df_asset["year"] == year)&(df_asset["season"] == season)]
+                if df_asset_filtered.empty:
+                    continue
+                try:
+                    total_share=df_asset_filtered.at[df_asset_filtered["total_share"].last_valid_index(), "total_share"]
+                except:
+                    continue
+
+                df_result.at[ts_code, f"{year}_{season}_total_share"] = total_share
+
+            df_result[f"{year}_{season}_qdii_ratio"] = df_result[f"{year}_{season}_amount"] /df_result[f"{year}_{season}_total_share"]
+            a_last_season += [f"{year}_{season}_qdii_ratio"]
+
 
     for firsts,seconds in LB.custom_pairwise_overlap(a_last_season):
         try:
-            df_result[f"{seconds}_pct"]=df_result[f"{seconds}"].div(df_result[f"{firsts}"])
+            df_result[f"{seconds}_qdii_mom"]=df_result[f"{seconds}"].sub(df_result[f"{firsts}"])
         except Exception as e:
             print(e)
 
@@ -1554,66 +1602,126 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
             # dividend
             if asset == "E" and market == "CN":
 
-                # qdii research
+                # qdii research and grade
+                """qddi grae starts from 2018, research starts around 2008?"""
                 for qdii in ["research","grade"]:
                     df_qdii_rg = DB.get_asset(ts_code=ts_code, freq=f"qdii_{qdii}", market="CN")
                     df_qdii_rg=df_qdii_rg[(df_qdii_rg.index > start_date)&(df_qdii_rg.index <= end_date)]
 
+                    a_freqs=[60]
                     if not df_qdii_rg.empty:
                         df_result.at[ts_code, f"qdii_{qdii}/period"] = len(df_qdii_rg) / len(df_asset)
-                        for freqd_trade_date,freqd in zip(a_freqd,[20,60,240]):
-
+                        for freqd_trade_date,freqd in zip(a_freqd,a_freqs):
                             df_qdii_rd_freqd=df_qdii_rg[df_qdii_rg.index >= freqd_trade_date]
-                            df_result.at[ts_code, f"qdii_{qdii}{freqd}"] =len(df_qdii_rd_freqd) / freqd
+                            df_result.at[ts_code, f"qdii_{qdii}{freqd}"] = len(df_qdii_rd_freqd) / freqd
+                    else:
+                        df_result.at[ts_code, f"qdii_{qdii}/period"] =0
+                        for freqd_trade_date,freqd in zip(a_freqd,a_freqs):
+                            df_result.at[ts_code, f"qdii_{qdii}{freqd}"] = 0
 
-                # hk hold
+
+                        # hk hold, 北上资金
                 df_hk = DB.get_asset(ts_code=ts_code, freq=f"hk_hold", market="CN")
                 df_hk.index=df_hk.index.astype(int)
                 df_hk = df_hk[(df_hk.index > start_date) & (df_hk.index <= end_date)]
                 if not df_hk.empty:
                     df_result.at[ts_code, f"hk_hold"] = df_hk["ratio"].iat[-1]
-                    df_result.at[ts_code, f"hk_hold_ALL"] = df_hk["ratio"].mean()/len(df_hk)
+                    df_result.at[ts_code, f"hk_hold_ALL"] = df_hk["ratio"].mean()
+                else:
+                    df_result.at[ts_code, f"hk_hold"] = 0
+                    df_result.at[ts_code, f"hk_hold_ALL"] = 0
+
+
+    #add if they are the head of industry
+    df_result_static =   DB.add_static_data(df_result, asset=a_asset, market=market)
+    for counter in [1,2,3]:
+        df_head = pd.DataFrame()
+        for industry in df_result_static[f"sw_industry{counter}"].unique():
+            if industry is None:
+                continue
+            df_filter = df_result_static[df_result_static[f"sw_industry{counter}"] == industry]
+            df_filter = df_filter.sort_values("total_mv", ascending=False)
+            df_head = df_head.append(df_filter.head(1))
+
+        df_result[f"head_sw_industry{counter}"]=0
+        df_result.loc[df_head.index,f"head_sw_industry{counter}"]=1
+
+
+    #add qdii hold after looping individual stocks
+    try:
+        qdii_path = "Market/CN/ATest/fund_portfolio/all_time_statistic.feather"
+        df_qdii = pd.read_feather(qdii_path)
+        df_qdii = df_qdii.set_index("ts_code", drop=True)
+
+        """NOTE we always check for LAST season, not this season"""
+        trade_date_str = str(end_date)
+        year = int(trade_date_str[0:4])
+        month = int(trade_date_str[4:6])
+        if month <= 3:
+            season = 1-1
+        elif month <= 6:
+            season = 2-1
+        elif month <= 9:
+            season = 3-1
+        elif month <= 12:
+            season = 4-1
+
+        if season==0:
+            year=year-1
+            season=4
+        qdii_ratio_column = f"{year}_{season}_qdii_ratio"
+        qdii_ratio_qdii_mom_column = f"{year}_{season}_qdii_ratio_qdii_mom"
+        df_result["qdii_ratio_ls"]=df_qdii[qdii_ratio_column]
+        df_result["qdii_ratio_ls_mom"]=df_qdii[qdii_ratio_qdii_mom_column]
+    except Exception as e:
+        print(e)
 
 
     """RANK ALL STUFF"""
+    """QDII Rank"""
     # qdii rank = all time rank. how much all time qdii attention does this stock get
     try:
-        df_result["qdii_rank"] = (df_result[f"qdii_research/period"].rank(ascending=False) + df_result[f"qdii_grade/period"].rank(ascending=False))
-        df_result["qdii_rank"] = df_result["qdii_rank"].rank(ascending=True)
+        """focus on long term"""
+        df_result["qdii_def_rank"] = df_result[f"qdii_ratio_ls"].rank(ascending=False) *0.62 + \
+                                df_result[f"qdii_research/period"].rank(ascending=False) *0.38*0.5+ \
+                                df_result[f"qdii_grade/period"].rank(ascending=False)*0.38*0.5
+        df_result["qdii_def_rank"] = df_result["qdii_def_rank"].rank(ascending=True)
+
     except:
-        df_result["qdii_rank"] = np.nan
+        df_result["qdii_def_rank"] = np.nan
 
-    # qdii rank = short time rank. how much all time qdii attention does this stock get
-    for qddii in ["research", "grade"]:
-        try:
-            df_result[f"qdii_{qddii}_mom"] = (df_result[f"qdii_{qddii}20"]/df_result[f"qdii_{qdii}/period"])*0.2+\
-                                             (df_result[f"qdii_{qddii}60"]/df_result[f"qdii_{qdii}/period"])*0.6+\
-                                             (df_result[f"qdii_{qddii}240"]/df_result[f"qdii_{qdii}/period"])*0.2
-        except:
-            df_result[f"qdii_{qddii}_mom"] = np.nan
+    try:
+        """focus on short term = offensive"""
+        df_result["qdii_off_rank"] = df_result[f"qdii_ratio_ls_mom"].rank(ascending=False) * 0.62 + \
+                                      df_result[f"qdii_research60"].rank(ascending=False) * 0.38 * 0.5 + \
+                                      df_result[f"qdii_grade60"].rank(ascending=False) * 0.38 * 0.5
+        df_result["qdii_off_rank"] = df_result["qdii_off_rank"].rank(ascending=True)
+    except:
+        df_result["qdii_off_rank"] = np.nan
 
 
+    """Technical Rank"""
     # offensive rank = ability to gain high return, no mater how the path is. Monotony and std is implicitly ranked here.
-    df_result["offensive_rank"] = + builtins.sum([df_result[f"{freq}_geomean"].rank(ascending=False) for freq in a_freq_s])
-    df_result["offensive_rank"] = df_result["offensive_rank"].rank(ascending=True)
+    df_result["tech_off_rank"] = + builtins.sum([df_result[f"{freq}_geomean"].rank(ascending=False) for freq in a_freq_s])
+    df_result["tech_off_rank"] = df_result["tech_off_rank"].rank(ascending=True)
 
     # defensive rank = ability not to fall down no matter what. Accounts also ability to make new high.
-    df_result["defensive_rank"] = builtins.sum([df_result[f"{freq}high"].rank(ascending=False) for freq in a_freq]) * 0.38 * 0.38 \
+    df_result["tech_def_rank"] = builtins.sum([df_result[f"{freq}high"].rank(ascending=False) for freq in a_freq]) * 0.38 * 0.38 \
                                 + builtins.sum([df_result[f"{freq}low"].rank(ascending=True) for freq in a_freq]) * 0.38 * 0.62 \
                                 + builtins.sum([df_result[f"abv_ma{freq}"].rank(ascending=False) for freq in a_freq]) * 0.62
-    df_result["defensive_rank"] =df_result["defensive_rank"].rank(ascending=True)
+    df_result["tech_def_rank"] =df_result["tech_def_rank"].rank(ascending=True)
 
 
     # combine using Arithmetic mean
-    """df_result["allround_rank_ari"] =  df_result["offensive_rank"]*0.38 \
-                                    + df_result["defensive_rank"]*0.62
+    """df_result["allround_rank_ari"] =  df_result["tech_off_rank"]*0.38 \
+                                    + df_result["tech_def_rank"]*0.62
     df_result["allround_rank_ari"] = df_result["allround_rank_ari"].rank(ascending=True)
     """
 
     # combine using Geometric mean
-    df_result["allround_rank_geo"] =   (len(df_result) - df_result["offensive_rank"]) \
-                                     * (len(df_result) - df_result["defensive_rank"]) \
-                                     * (len(df_result) - df_result["defensive_rank"])
+    df_result["allround_rank_geo"] =   (len(df_result) - df_result["tech_off_rank"]) \
+                                     * (len(df_result) - df_result["tech_def_rank"]) \
+                                     * (len(df_result) - df_result["tech_def_rank"])
     df_result["allround_rank_geo"] = df_result["allround_rank_geo"].rank(ascending=False)
 
 
