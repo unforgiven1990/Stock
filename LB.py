@@ -1086,7 +1086,7 @@ def send_mail_report(trade_string="what to buy and sell",files=["test.csv"]):
 def trade_date_to_vieable(df):
     a=df.index
     a=a.astype(str)
-    df["index"]=a.str.slice(0,4)+"年"+a.str.slice(4,6)+"月"+a.str.slice(6,8)+"日"
+    df["index"]=a.str.slice(0,4)+"."+a.str.slice(4,6)+"."+a.str.slice(6,8)+"."
     df.index=df["index"]
     df.index.name="trade_date"
 

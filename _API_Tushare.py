@@ -198,7 +198,8 @@ if __name__ == '__main__':
     TODO kwargize all tushare_api functions to make htem more versatile
     """
     import DB
-    ts_code = "600887.SH"
-    df=my_index_global(ts_code="XIN9",start_date="00000000",end_date="99999999")
+
+    df=my_pro_bar(ts_code="000960.SH",asset="I",freq="D",start_date="00000000",end_date="99999999")
+
     print(df)
-    df.to_csv(f"global today.csv", encoding="utf-8_sig")
+    df.to_csv(f"index.csv", encoding="utf-8_sig")
