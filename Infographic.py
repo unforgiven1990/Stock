@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import matplotlib.patches as mpatches
 import matplotlib
+from matplotlib.patches import FancyBboxPatch
 from matplotlib.patches import Rectangle
 import matplotlib.patches as patches
 import squarify
@@ -41,10 +42,14 @@ text = ImageFont.truetype(r'c:\windows\fonts\msyh.ttc', size=int(width * 0.02))
 
 
 red="#FF5959"
-green="#05CA00"
+green="#05bf00"
 white='#ffffff'
 gray="#333333"
-yellow='#F6B900'
+lightgray="#bbbbbb"
+
+orange= '#F6B900'
+yellow= '#e8eb34'
+violet="#150e9c"
 
 treemapred1="#e53935"
 treemapred2="#d32f2f"
@@ -56,7 +61,7 @@ treemapgreen2="#388E3C"
 treemapgreen3="#2E7D32"
 treemapgreen4="#1B5E20"
 
-a_line_plot_color=[yellow,white]
+a_line_plot_color=[orange, white]
 
 title_padding=(100,100)
 matplotlib.rc('font', family='Microsoft Yahei')
@@ -64,6 +69,34 @@ matplotlib.rc('font', family='Microsoft Yahei')
 short_maxiium = 3
 short_minimum = -short_maxiium
 #https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+
+
+
+def axes_to_round(ax,mutation_aspect=300,mutation_scale=0.5):
+    new_patches = []
+
+    for i, patch in enumerate(reversed(ax.patches)):
+        bb = patch.get_bbox()
+        color = patch.get_facecolor()
+
+        p_bbox = FancyBboxPatch((bb.xmin, bb.ymin),
+                                abs(bb.width), abs(bb.height),
+                                boxstyle="round",
+                                ec="none", fc=color,
+                                mutation_aspect=mutation_aspect,
+                                mutation_scale=mutation_scale
+                                )
+
+
+        print("xy,", (bb.width, bb.height))
+
+        patch.remove()
+        # line.patches[i]=p_bbox
+        new_patches.append(p_bbox)
+
+
+    for patch in reversed(new_patches):
+        ax.add_patch(patch)
 
 
 def add_corners(im, rad,a_corners=[True]*4):
@@ -102,9 +135,9 @@ def draw_text(section, text, fontsize=h1, left=True,fill="#ffffff",yoffset=0,bac
         w, h = idraw.textsize(text, font=fontsize)
         path = f'Plot/static/yellow.png'
         chart = Image.open(path)
-        chart = chart.resize((w + title_padding[0] + 30, h + 30))
-        chart = add_corners(chart, 30,a_corners=[False,False,True,True])
-        section.paste(chart, (0, title_padding[1]), mask=chart)
+        chart = chart.resize((w + title_padding[0] + 40, h + 40))
+        chart = add_corners(chart, 40,a_corners=[False,False,True,True])
+        section.paste(chart, (0, title_padding[1]-10), mask=chart)
         fill=gray
 
     if left:
@@ -136,34 +169,37 @@ def get_bar2(s,path,y_limit=[-550, 250]):
                 x += [f"{int(index)}日新高"]
             y += [item]
 
-    line = plt.bar(x, y)
+    #line = plt.bar(x, y)
+    df_plot=pd.DataFrame(data=y,index=[i for i in range(len(x))])
+    ax=df_plot.plot.bar(legend=False)
 
+    axes_to_round(ax,mutation_aspect=80,mutation_scale=0.5)
+
+    axes = plt.gca()
+    axes.set_ylim(y_limit)
+    plt.axis('off')
+
+    fig = plt.gcf()
+    fig.set_size_inches(6, 10)
 
     # draw values as text
     for enum, i in enumerate(range(len(y))):
         # OVER each bar
-        plt.annotate(f"{y[i]}家", xy=(x[i], y[i]+5), ha='center', va='bottom', color="white", size=12)
+        plt.annotate(f"{y[i]}家", xy=(i, y[i]+15), ha='center', va='bottom', color="white", size=12)
 
         # UNDER each bar
-        plt.annotate(x[i][:-2], xy=(x[i], -30), ha='center', va='bottom', color="white", size=12)
+        plt.annotate(x[i][:-2], xy=(i, -40), ha='center', va='bottom', color="white", size=12)
 
-    plt.annotate("新低", xy=(1.5, -120), ha='center', va='bottom', color="white", size=40)
-    plt.annotate("新高", xy=(5.5, -120), ha='center', va='bottom', color="white", size=40)
 
-    # use this to draw histogram of your data
-    # scale down the chart by making the y axis seem taller
-    axes = plt.gca()
-    axes.set_ylim(y_limit)
-    plt.axis('off')
-    fig = plt.gcf()
-    fig.set_size_inches(6, 10)
+    #plt.annotate("新低", xy=(1.5, -120), ha='center', va='bottom', color="white", size=40)
+    #plt.annotate("新高", xy=(5.5, -120), ha='center', va='bottom', color="white", size=40)
 
     # add color
     for i in range(len(x)):
         if i >= len(x)/2:
-            line[i].set_color(red)
+            ax.patches[i].set_color(red)
         else:
-            line[i].set_color(green)
+            ax.patches[i].set_color(green)
 
     # save png
     return img_saver(path=path,dpi=390)
@@ -197,12 +233,15 @@ def get_bar(s,path,y_limit=[-300, 2300]):
 
     # x axis: transform data into bar chart
     x = [x for x in range(0, len(y))]
-    line = plt.bar(x, y)
+    #line = plt.bar(x, y)
+    df=pd.DataFrame(data=y,index=x)
+    ax=df.plot.bar(legend=False)
+
 
     # draw values as text
     for enum, i in enumerate(range(len(y))):
         # OVER each bar
-        plt.annotate(str(y[i]), xy=(x[i], y[i] + 30), ha='center', va='bottom', color="white", size=12)
+        plt.annotate(str(y[i]), xy=(x[i], y[i] + 50), ha='center', va='bottom', color="white", size=12)
 
         # UNDER each bar
         lower = abs(a_boundary[i][0])
@@ -223,13 +262,16 @@ def get_bar(s,path,y_limit=[-300, 2300]):
     axes.set_ylim(y_limit)
     plt.axis('off')
 
+    #make corners round
+    axes_to_round(ax)
+
     # add color
     for i in x:
-        if i < int(len(y) / 2):
-            line[i].set_color(green)
-        elif i > int(len(y) / 2):
-            line[i].set_color(red)
-    line[int(len(y) / 2)].set_color(f'#ffffff')
+        if i < 5:
+            ax.patches[i].set_color(green)
+        elif i > 5:
+            ax.patches[i].set_color(red)
+    ax.patches[5].set_color(f'#ffffff')
 
     # save png
     return img_saver(path=path,dpi=390)
@@ -283,12 +325,13 @@ def section_end(trade_date, df_date,bcolor,pos):
     return section
 
 
-def linechart_helper(name,trade_date,a_index,a_labelhelper):
+def linechart_helper(section,idraw,name,trade_date,a_index,a_labelhelper,a_summary):
     df_ts_code=DB.get_ts_code(a_asset=["E","I","FD"])
     fig = plt.gcf()
 
     a_legend=[]
     a_minmax=[]
+    a_pct_chg=[]
     def round_down(num, divisor):
         return num - (num % divisor)
     for i,index in enumerate(a_index):
@@ -304,6 +347,8 @@ def linechart_helper(name,trade_date,a_index,a_labelhelper):
         df_asset["close"] =df_asset["close"]*100-100
         index_name=df_ts_code.at[index,"name"]
         df_asset[f"{index_name}"]=df_asset["close"]
+
+        a_pct_chg+=[df_asset["close"].iat[-1]]
 
         ax = df_asset[index_name].plot(color=a_line_plot_color[i], linewidth=2.5,legend=True)
         a_minmax+=[round_down(df_asset[index_name].min(),10),df_asset[index_name].max()]
@@ -331,14 +376,21 @@ def linechart_helper(name,trade_date,a_index,a_labelhelper):
     #plt.annotate('今天', xy=(len(df_asset), df_asset["close"].iat[-1] + 15), xytext=(len(df_asset), df_asset["close"].iat[-1] + 50), ha='center', color=white, arrowprops=dict(facecolor=yellow, color=yellow, shrink=0.05))
     fig.set_size_inches(4, 2)
 
-
-
     leg = plt.legend(handles=a_legend,mode="expand",bbox_to_anchor = (0.5, 1.25),ncol=len(a_index))
     leg.get_frame().set_alpha(0)
     for text in leg.get_texts():
         text.set_color(white)
 
     #plt.fill_between(df_asset["close"].index, df_asset["close"], 0, color=yellow)
+
+    #plot text which index is stronger
+    if a_pct_chg[0]>a_pct_chg[1]:
+        text=f"{a_summary[0]} > {a_summary[1]}"
+    else:
+        text = f"{a_summary[1]} > {a_summary[0]}"
+
+    w, h = idraw.textsize(text, font=mega3)
+    idraw.text((int(((width - w) / 2)), 1700), text, font=mega3, fill=white)
 
     # use this to draw histogram of your data
     path = f'Plot/report_D/{trade_date}/{name}.png'
@@ -350,7 +402,7 @@ def linechart_helper(name,trade_date,a_index,a_labelhelper):
 def section_long_pe(trade_date, df_date, bcolor, pos):
     # add init
     section = Image.new('RGBA', (width, 6400), bcolor)
-    idraw = draw_text(section, f"{pos}. 行业市盈率")
+    idraw = draw_text(section, f"{pos}. 行业市盈率",background=True)
     countfrom=20050101
 
     df_sort=pd.DataFrame()
@@ -390,15 +442,15 @@ def section_long_pe(trade_date, df_date, bcolor, pos):
     # fake
     line = plt.barh(y, x_fake)  # background
     for i in range(0, len(line)):
-        line[i].set_color("#bbbbbb")
+        line[i].set_color(white)
 
     # real
     lines = plt.barh(y, x)
     for i in range(0, len(lines)):
         if df_sort.index[i] in ["创业板","主板","中小板"]:
-            lines[i].set_color(yellow)
+            lines[i].set_color(red)
         else:
-            lines[i].set_color(white)
+            lines[i].set_color(orange)
 
     ax = plt.gca()
     ax.set_xlim([-70, 130])
@@ -425,13 +477,13 @@ def section_long_pe(trade_date, df_date, bcolor, pos):
         plt.annotate(df_sort.index[i], xy=(-70, -0.42+i*1), ha='left', va='bottom', color=white, size=12)
 
         # LEFT min
-        plt.annotate(f"{int(df_sort['min'].iat[i])}", xy=(-10, manu + i * 1), ha='center', va='bottom', color="white", size=12)
+        plt.annotate(f"{int(df_sort['min'].iat[i])}", xy=(-10, manu + i * 1), ha='center', va='bottom', color=white, size=12)
 
         # RIGHT max
-        plt.annotate(f"{int(df_sort['max'].iat[i])}", xy=(102, manu + i * 1), ha='left', va='bottom', color="white", size=12)
+        plt.annotate(f"{int(df_sort['max'].iat[i])}", xy=(105, manu + i * 1), ha='left', va='bottom', color=white, size=12)
 
         # CENTER curr
-        plt.annotate(f"{int(df_sort['cur'].iat[i])}", xy=(int(df_sort['cur2'].iat[i]+5), manu + i * 1), ha='left', va='bottom', color="white", size=12)
+        plt.annotate(f"{int(df_sort['cur'].iat[i])}", xy=(int(df_sort['cur2'].iat[i]+5), manu + i * 1), ha='left', va='bottom', color=gray, size=12)
 
 
     fig = plt.gcf()
@@ -451,7 +503,7 @@ def section_long_pe(trade_date, df_date, bcolor, pos):
     df_asset_G = df_asset_G[(df_asset_G.index <= int(trade_date)) ]
     LB.trade_date_to_vieable(df_asset_G)
     df_asset_G.index.name=""
-    ax=df_asset_G["pe_ttm"].plot(color=yellow,linewidth=1)
+    ax=df_asset_G["pe_ttm"].plot(color=orange, linewidth=1)
     ax.set_ylim([df_asset_G["pe_ttm"].min(), df_asset_G["pe_ttm"].max()+20])
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -465,12 +517,28 @@ def section_long_pe(trade_date, df_date, bcolor, pos):
     ax.tick_params(axis='x', colors="#ffffff")
     ax.tick_params(axis='y', colors="#ffffff")
     plt.ylabel('市盈率 PE', color="white")
-    plt.annotate('今天', xy=(len(df_asset_G), df_asset_G["pe_ttm"].iat[-1]+15), xytext=(len(df_asset_G), df_asset_G["pe_ttm"].iat[-1]+50),ha='center', color=white, arrowprops=dict(facecolor=yellow,color=yellow, shrink=0.05))
+    plt.annotate('今天', xy=(len(df_asset_G), df_asset_G["pe_ttm"].iat[-1]+15), xytext=(len(df_asset_G), df_asset_G["pe_ttm"].iat[-1]+50), ha='center', color=white, arrowprops=dict(facecolor=orange, color=orange, shrink=0.05))
     plt.annotate('创业板历史市盈率', xy=(int(len(df_asset_G)/2), df_asset_G["pe_ttm"].max()+15),ha='center', color=white)
     fig.set_size_inches(4, 2)
 
+    #write summary text
+    rank=df_asset_G["pe_ttm"].rank(pct=True)
+    today_pe=rank.iat[-1]
+    if today_pe < 0.8 and today_pe <= 1:
+        text="创业板市盈率极高"
+    if today_pe < 0.6 and today_pe < 0.8:
+        text="创业板市盈率偏高"
+    if today_pe < 0.4 and today_pe < 0.6:
+        text="创业板市盈率正常"
+    if today_pe < 0.2 and today_pe < 0.4:
+        text="创业板市盈率偏低"
+    if today_pe <= 0 and today_pe < 0.2:
+        text="创业板市盈率极低"
+    w, h = idraw.textsize(text, font=mega3)
+    idraw.text((int((width - w) / 2), 6200), text, font=mega3, fill=white)
+
     #egal, (ax1) = plt.subplots(1, 1, sharex=True)
-    plt.fill_between(df_asset_G["pe_ttm"].index, df_asset_G["pe_ttm"], 0, color=yellow)
+    plt.fill_between(df_asset_G["pe_ttm"].index, df_asset_G["pe_ttm"], 0, color=orange)
 
 
     # use this to draw histogram of your data
@@ -595,12 +663,12 @@ def section_divergence(trade_date, df_date, bcolor,pos):
     # fake
     line = plt.barh(y, x_fake)  # background
     for i in range(0, len(line)):
-        line[i].set_color("#bbbbbb")
+        line[i].set_color(violet)
 
     # real
     lines = plt.barh(y, x)
     for i in range(0, len(lines)):
-        lines[i].set_color(white)
+        lines[i].set_color(orange)
 
     ax = plt.gca()
     ax.set_xlim([-1, 2])
@@ -734,83 +802,131 @@ def helper_leftorright(section,idraw, divergence,a_leftright_label,a_description
         I found out that 4=min, 6=max is a good scale that most of the time remains reasonable
     """
     #cast divergence to be between minimum and maximum
-    if divergence <= short_minimum:
-        divergence = short_minimum
-    elif divergence >= short_maxiium:
-        divergence = short_maxiium
+    if False:
+        if divergence <= short_minimum:
+            divergence = short_minimum
+        elif divergence >= short_maxiium:
+            divergence = short_maxiium
 
-    # convert the 4-8 scale to 0-1 scale
-    divergence = (((divergence - short_minimum)) / (short_maxiium - short_minimum))
-    divergence=1-divergence
+        # convert the 4-8 scale to 0-1 scale
+        divergence = (((divergence - short_minimum)) / (short_maxiium - short_minimum))
+        divergence=1-divergence
 
-    # display data
-    x_fake = [x for x in [1]]
-    x = [x for x in [divergence]]
-    y = [x for x in ["egal"]]
+        # display data
+        x_fake = [x for x in [1]]
+        x = [x for x in [divergence]]
+        y = [x for x in ["egal"]]
 
-    # fake
-    line = plt.barh(y, x_fake)  # background
-    for i in range(0, len(line)):
-        line[i].set_color("#bbbbbb")
+        # fake
+        line = plt.barh(y, x_fake)  # background
+        for i in range(0, len(line)):
+            line[i].set_color(white)
 
-    # real
-    lines = plt.barh(y, x)
-    for i in range(0, len(lines)):
-        lines[i].set_color(white)
+        # real
+        lines = plt.barh(y, x)
+        for i in range(0, len(lines)):
+            lines[i].set_color(orange)
 
-    #standard visual setting
-    ax = plt.gca()
-    ax.set_xlim([-1, 2])
-    ax.set_ylim([0, 1])
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.xaxis.set_visible(False)
-    ax.yaxis.set_visible(False)
-    plt.annotate(a_leftright_label[0], xy=(-0.20, 0.08), ha='center', va='bottom', color="white", size=28)
-    plt.annotate(a_leftright_label[1], xy=(1.20, 0.08), ha='center', va='bottom', color="white", size=28)
+        #make it round
+        #axes_to_round(ax)
 
-    if a_gain[0]>=0:
-        text1=f"+{round(a_gain[0],1)}%"
+        #standard visual setting
+        ax = plt.gca()
+        ax.set_xlim([-1, 2])
+        ax.set_ylim([0, 1])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+        plt.annotate(a_leftright_label[0], xy=(-0.20, 0.08), ha='center', va='bottom', color="white", size=28)
+        plt.annotate(a_leftright_label[1], xy=(1.20, 0.08), ha='center', va='bottom', color="white", size=28)
+
+        if a_gain[0]>=0:
+            text1=f"+{round(a_gain[0],1)}%"
+        else:
+            text1 = f"{round(a_gain[0], 1)}%"
+
+        if a_gain[1]>=0:
+            text2=f"+{round(a_gain[1],1)}%"
+        else:
+            text2 = f"{round(a_gain[1], 1)}%"
+        plt.annotate(text1, xy=(-0.20, 0.35), ha='center', va='bottom', color="white", size=28)
+        plt.annotate(text2, xy=(1.20, 0.35), ha='center', va='bottom', color="white", size=28)
+
+        plt.yticks(color="#ffffff")
+        fig = plt.gcf()
+        fig.set_size_inches(14, 1.8)
+
+        # draw arrow
+        path = f'Plot/static/arrow.png'
+        chart = Image.open(path)
+        chart = chart.resize((150, 150))
+        cw, ch = chart.size
+        hnorm = 106
+        diff = divergence - 0.5
+        distance = diff * hnorm * 10
+
+        section.paste(chart, (int(((width - cw) / 2) + distance), 560+y_offset), mask=chart)
+
+        if divergence <= 0.20:
+            summary_text = a_description[0]
+        elif divergence > 0.20 and divergence <= 0.40:
+            summary_text = a_description[1]
+        elif divergence > 0.40 and divergence <= 0.60:
+            summary_text = a_description[2]
+        elif divergence > 0.60 and divergence <= 0.80:
+            summary_text = a_description[3]
+        elif divergence > 0.80:
+            summary_text = a_description[4]
+
+
+        w, h = idraw.textsize(summary_text, font=mega3)
+        #idraw.text((int(((width - w) / 2) + distance), title_padding[1] + 560 - 300+y_offset), summary_text, font=mega3, fill=white)
+        idraw.text((int(((width - w) / 2) ), title_padding[1] + 560 +250+y_offset), summary_text, font=mega3, fill=white)
     else:
-        text1 = f"{round(a_gain[0], 1)}%"
+        for counter, (hdistance,label,stkgain) in enumerate(zip([-450,450],a_leftright_label,a_gain)):
 
-    if a_gain[1]>=0:
-        text2=f"+{round(a_gain[1],1)}%"
-    else:
-        text2 = f"{round(a_gain[1], 1)}%"
-    plt.annotate(text1, xy=(-0.20, 0.35), ha='center', va='bottom', color="white", size=28)
-    plt.annotate(text2, xy=(1.20, 0.35), ha='center', va='bottom', color="white", size=28)
+            # best should be at left
 
-    plt.yticks(color="#ffffff")
-    fig = plt.gcf()
-    fig.set_size_inches(14, 1.8)
 
-    # draw arrow
-    path = f'Plot/static/arrow.png'
-    chart = Image.open(path)
-    chart = chart.resize((150, 150))
-    cw, ch = chart.size
-    hnorm = 106
-    diff = divergence - 0.5
-    distance = diff * hnorm * 10
+            #background image
+            if stkgain==max(a_gain):
+                bpath = f'Plot/static/yellow.png'
+            else:
+                bpath = f'Plot/static/white.png'
+            # load image and put it as background
+            bground = Image.open(bpath)
+            bground = bground.resize((600, 400))
+            bground = add_corners(bground, 70)
+            w, height1 = bground.size
+            section.paste(bground, (int(((width - w) / 2)) + hdistance, 410+y_offset), mask=bground)
 
-    section.paste(chart, (int(((width - cw) / 2) + distance), 560+y_offset), mask=chart)
 
-    if divergence <= 0.20:
-        summary_text = a_description[0]
-    elif divergence > 0.20 and divergence <= 0.40:
-        summary_text = a_description[1]
-    elif divergence > 0.40 and divergence <= 0.60:
-        summary_text = a_description[2]
-    elif divergence > 0.60 and divergence <= 0.80:
-        summary_text = a_description[3]
-    elif divergence > 0.80:
-        summary_text = a_description[4]
 
-    w, h = idraw.textsize(summary_text, font=mega3)
-    idraw.text((int(((width - w) / 2) + distance), title_padding[1] + 560 - 300+y_offset), summary_text, font=mega3, fill=white)
+            #pct
+            stkgain = round(stkgain, 1)
+            if stkgain >= 0:
+                stkgain = f"+{stkgain}%"
+            else:
+                stkgain = f"{stkgain}%"
+            w, h = idraw.textsize(stkgain, font=mega3)
+            idraw.text((int(((width - w) / 2)) + hdistance, 600 + y_offset), stkgain, font=mega3, fill=gray)
+
+            #label
+            w, h = idraw.textsize(label, font=mega3)
+            idraw.text((int(((width - w) / 2)) + hdistance, 430+y_offset), label, font=mega3, fill=gray)
+
+
+
+            if divergence>0 :
+                sign = ">"
+            elif divergence<0:
+                sign = "<"
+            else:
+                sign = "="
+            idraw.text((int(((width) / 2))-120 , 400-30+y_offset ), sign, font=mega1, fill="white",align="center")
 
     # draw label
     path = f'Plot/report_D/{trade_date}/{name}.png'
@@ -819,7 +935,7 @@ def helper_leftorright(section,idraw, divergence,a_leftright_label,a_description
 
 def section_short_style(trade_date, df_date, bcolor, pos):
     # add init
-    section = Image.new('RGBA', (width, 4300), bcolor)
+    section = Image.new('RGBA', (width, 3600), bcolor)
     idraw = draw_text(section, f"{pos}. 市场风格",background=True)
 
     d_size={
@@ -861,7 +977,8 @@ def section_short_style(trade_date, df_date, bcolor, pos):
         smallgain= df_asset_small.at[int(trade_date),"pct_chg"]
         today_divergence = biggain-smallgain
 
-        y_offset=counter*800
+        #y_offset=counter*800
+        y_offset=counter*650
         chart = Image.open(helper_leftorright(section=section,idraw=idraw,divergence=today_divergence,a_leftright_label=d_["a_leftright_label"],a_description=d_["a_description"],y_offset=y_offset,name=f"shor_size{counter}",a_gain=[biggain,smallgain]))
         cw, ch = chart.size
         section.paste(chart, (int((width - cw) / 2), 480+y_offset), mask=chart)
@@ -872,63 +989,85 @@ def section_short_style(trade_date, df_date, bcolor, pos):
 
 def section_mid_size(trade_date, df_date, bcolor, pos):
     # add init
-    section = Image.new('RGBA', (width, 1700), bcolor)
+    section = Image.new('RGBA', (width, 1950), bcolor)
     idraw = draw_text(section, f"{pos}. 中长风格: 大市值vs小市值",background=True)
 
-    path=linechart_helper(name="size",trade_date=trade_date,a_index=[f"000903.SH","000852.SH"],a_labelhelper=["大市值","小市值"])
+    path=linechart_helper(section=section,idraw=idraw,name="size",trade_date=trade_date,a_index=[f"000903.SH","000852.SH"],a_labelhelper=["大市值","小市值"],a_summary=["大市值","小市值"])
     chart = Image.open(path)
     cw, ch = chart.size
-    section.paste(chart, (int((width - cw) / 2), 300), mask=chart)
+    section.paste(chart, (int((width - cw) / 2), 400), mask=chart)
     return section
 
 def section_mid_valuegrowth(trade_date, df_date, bcolor, pos):
     # add init
-    section = Image.new('RGBA', (width, 1700), bcolor)
-    idraw = draw_text(section, f"{pos}. 中长风格: 成长vs价值",background=True)
+    section = Image.new('RGBA', (width, 1950), bcolor)
+    idraw = draw_text(section, f"{pos}. 中长风格: 成长股vs价值股",background=True)
 
-    path=linechart_helper(name="size",trade_date=trade_date,a_index=["000117.SH", "000118.SH"],a_labelhelper=["",""])
+    path=linechart_helper(section=section,idraw=idraw,name="size",trade_date=trade_date,a_index=["000117.SH", "000118.SH"],a_labelhelper=["",""],a_summary=["成长股","价值股"])
     chart = Image.open(path)
     cw, ch = chart.size
-    section.paste(chart, (int((width - cw) / 2), 300), mask=chart)
+    section.paste(chart, (int((width - cw) / 2), 400), mask=chart)
     return section
 
 def section_mid_beta(trade_date, df_date, bcolor, pos):
     # add init
-    section = Image.new('RGBA', (width, 1700), bcolor)
+    section = Image.new('RGBA', (width, 1950), bcolor)
     idraw = draw_text(section, f"{pos}. 中长风格: 高贝塔vs低贝塔",background=True)
 
-    path=linechart_helper(name="size",trade_date=trade_date,a_index=["399406.SZ", "399407.SZ"],a_labelhelper=["",""])
+    path=linechart_helper(section=section,idraw=idraw,name="size",trade_date=trade_date,a_index=["399406.SZ", "399407.SZ"],a_labelhelper=["",""],a_summary=["高贝塔","低贝塔"])
     chart = Image.open(path)
     cw, ch = chart.size
-    section.paste(chart, (int((width - cw) / 2), 300), mask=chart)
+    section.paste(chart, (int((width - cw) / 2), 400), mask=chart)
+    return section
+
+def section_mid_head(trade_date, df_date, bcolor, pos):
+    # add init
+    section = Image.new('RGBA', (width, 1950), bcolor)
+    idraw = draw_text(section, f"{pos}. 中长风格: 龙头股vs非龙头",background=True)
+
+    path=linechart_helper(section=section,idraw=idraw,name="size",trade_date=trade_date,a_index=["399653.SZ", "000300.SH"],a_labelhelper=["",""],a_summary=["龙头股","非龙头"])
+    chart = Image.open(path)
+    cw, ch = chart.size
+    section.paste(chart, (int((width - cw) / 2), 400), mask=chart)
+    return section
+
+def section_mid_supplier(trade_date, df_date, bcolor, pos):
+    # add init
+    section = Image.new('RGBA', (width, 1950), bcolor)
+    idraw = draw_text(section, f"{pos}. 中长风格: 上游股vs下游股",background=True)
+
+    path=linechart_helper(section=section,idraw=idraw,name="size",trade_date=trade_date,a_index=["399704.SZ", "399706.SZ"],a_labelhelper=["",""],a_summary=["上游股","下游股"])
+    chart = Image.open(path)
+    cw, ch = chart.size
+    section.paste(chart, (int((width - cw) / 2), 400), mask=chart)
     return section
 
 def section_mid_fund(trade_date, df_date, bcolor, pos):
     # add init
-    section = Image.new('RGBA', (width, 1700), bcolor)
+    section = Image.new('RGBA', (width, 1950), bcolor)
     idraw = draw_text(section, f"{pos}. 中长风格: 基金vs沪深300",background=True)
 
-    path=linechart_helper(name="size",trade_date=trade_date,a_index=["399379.SZ", "399300.SZ"],a_labelhelper=["",""])
+    path=linechart_helper(section=section,idraw=idraw,name="size",trade_date=trade_date,a_index=["399379.SZ", "399300.SZ"],a_labelhelper=["",""],a_summary=["基金","沪深300"])
     chart = Image.open(path)
     cw, ch = chart.size
-    section.paste(chart, (int((width - cw) / 2), 300), mask=chart)
+    section.paste(chart, (int((width - cw) / 2), 400), mask=chart)
     return section
 
 def section_stock_gain(trade_date, df_date,bcolor,pos):
     # add init
-    section = Image.new('RGBA', (width, 2550), bcolor)
+    section = Image.new('RGBA', (width, 2500), bcolor)
     idraw = draw_text(section, f"{pos}. 涨跌分布",background=True)
 
     #add average gain
     avg_gain=df_date["pct_chg"].mean()
     avg_gain = round(avg_gain, 2)
     avg_gain= f"平均涨跌\n+{avg_gain}%" if avg_gain>0 else f"平均涨跌\n{avg_gain}%"
-    idraw.text((title_padding[0], 450), avg_gain, font=mega3, fill="white")
+    idraw.text((title_padding[0], 400), avg_gain, font=mega3, fill="white")
 
     try:
         zd_ratio=len(df_date[df_date["pct_chg"]>9.5])/len(df_date[df_date["pct_chg"]<-9.5])
         zd_ratio=int(zd_ratio)
-        idraw.text((1400, 450), f"涨跌停比\n≈{zd_ratio}:1", font=mega3, fill="white",align="right")
+        idraw.text((1350, 400), f"涨跌停比\n≈{zd_ratio}:1", font=mega3, fill="white",align="right")
     except:
         pass
 
@@ -959,7 +1098,7 @@ def section_stock_gain(trade_date, df_date,bcolor,pos):
         # load image and put it as background
         bpath = f'Plot/static/greenarrow.png' if i ==0 else f'Plot/static/redarrow.png'
         bground = Image.open(bpath)
-        bground = bground.resize((600, 800))
+        bground = bground.resize((500, 800))
         w, height1 = bground.size
         if text=="涨":
             minus_height=-80
@@ -1133,14 +1272,15 @@ def section_index(trade_date, df_date,bcolor,pos):
 def section_mid_alltime(trade_date, df_date, bcolor, pos):
 
     # add init
-    section = Image.new('RGBA', (width, 2000), bcolor)
+    section = Image.new('RGBA', (width, 1700), bcolor)
     idraw = draw_text(section, f"{pos}. 今日创新",background=True)
 
-    # add cliff hanger
-    path = f'Plot/static/cliff.png'
-    chart = Image.open(path)
-    chart = chart.resize((1900, 900))
-    section.paste(chart, (0, 0), mask=chart)
+    # add cliff hanger illustration
+    if False:
+        path = f'Plot/static/cliff.png'
+        chart = Image.open(path)
+        chart = chart.resize((1900, 1100))
+        section.paste(chart, (0, 0), mask=chart)
 
     #add data
     df_date["isminmax"]=df_date["isminmax"].replace(np.nan,0)
@@ -1157,7 +1297,13 @@ def section_mid_alltime(trade_date, df_date, bcolor, pos):
 
     chart = Image.open(get_bar2(s=s,path=path))
     cw,ch=chart.size
-    section.paste(chart, (int((width-cw)/2), 500), mask=chart)
+    section.paste(chart, (int((width-cw)/2), 200), mask=chart)
+
+    #add新高 新低两字
+    for hdistance, text in [(450,"新高"),(-450,"新低")]:
+        w, height2 = idraw.textsize(text, font=mega2)
+        idraw.text((int(((width - w) / 2)) + hdistance, 1300), text, font=mega2, fill=white)
+
     return section
 
 
@@ -1168,12 +1314,12 @@ def bar_helper(x,y,trade_date,y_label=""):
     # fake
     line = plt.bar(x, y_fake)  # background
     for i in range(0, len(line)):
-        line[i].set_color(yellow)
+        line[i].set_color(white)
 
     # real
     line = plt.bar(x, y)
     for i in range(0, len(line)):
-        line[i].set_color(white)
+        line[i].set_color(orange)
     axes = plt.gca()
     axes.set_ylim([-20, 110])
     plt.axis('off')
@@ -1185,16 +1331,15 @@ def bar_helper(x,y,trade_date,y_label=""):
         # OVER each bar
         if y[i] <= 75:
             add = 5
-            color = white
+            color = gray
         else:
             add = -20
             color = gray
 
-
         plt.annotate(f"{y[i]}{y_label}", xy=(i, y[i] + add), ha='center', va='bottom', color=color, size=24)
 
         # UNDER each bar
-        plt.annotate(x[i], xy=(i, -10), ha='center', va='bottom', color="white", size=11)
+        plt.annotate(x[i], xy=(i, -10), ha='center', va='bottom', color="white", size=13)
 
     # use this to draw histogram of your data
     path = f'Plot/report_D/{trade_date}/rsi.png'
@@ -1204,7 +1349,7 @@ def bar_helper(x,y,trade_date,y_label=""):
 def section_ma(trade_date, df_date,bcolor,pos):
 
     # add init
-    section = Image.new('RGBA', (width, 1700), bcolor)
+    section = Image.new('RGBA', (width, 1900), bcolor)
     idraw = draw_text(section, f"{pos}. 均线统计",background=True)
 
 
@@ -1247,15 +1392,15 @@ def section_ma(trade_date, df_date,bcolor,pos):
             ma_pct=len(df_filter)/len(df_date)
             y+=[int(ma_pct*100)]
             a_y_abs+=[len(df_filter)]
-            x=[f"{x}日 均线上" for x in [5, 20, 60, 240]]
+            x=[f"{x}日均线上" for x in [5, 20, 60, 240]]
 
         chart = Image.open(bar_helper(x,y,trade_date,"%"))
         cw,ch=chart.size
-        section.paste(chart, (int((width-cw)/2), 300), mask=chart)
+        section.paste(chart, (int((width-cw)/2), 400), mask=chart)
 
-    explain=f"如：有 {y[0]}% 的股票今日收盘在5日均线上。"
-    w, h = idraw.textsize(explain, font=h2)
-    idraw.text((int((width - w) / 2), 1400), explain, font=h2, fill=white)
+    explain=f"{y[0]}% 的股票\n收盘在5日均线上"
+    w, h = idraw.textsize(explain, font=mega3)
+    idraw.text((int((width - w) / 2), 1450), explain, font=mega3, fill=white,align="center")
 
     return section
 
@@ -1263,7 +1408,7 @@ def section_ma(trade_date, df_date,bcolor,pos):
 def section_rsi(trade_date, df_date,bcolor,pos):
 
     # add init
-    section = Image.new('RGBA', (width, 1700), bcolor)
+    section = Image.new('RGBA', (width, 1900), bcolor)
     idraw = draw_text(section, f"{pos}. RSI统计",background=True)
 
     # display data
@@ -1271,36 +1416,20 @@ def section_rsi(trade_date, df_date,bcolor,pos):
     y=[]
     for freqn in [5, 20, 60, 240]:
         y+= [round(df_date[f"rsi{freqn}"].mean(), 1)]
-        x+=[f"{freqn}日 RSI"]
+        x+=[f"{freqn}日RSI"]
     chart = Image.open(bar_helper(x,y,trade_date,""))
 
     cw,ch=chart.size
-    section.paste(chart, (int((width-cw)/2), 300), mask=chart)
+    section.paste(chart, (int((width-cw)/2), 400), mask=chart)
 
-    explain=f"如：所有股票5日RSI均值为{y[0]}。"
-    w, h = idraw.textsize(explain, font=h2)
-    idraw.text((int((width - w) / 2), 1400), explain, font=h2, fill=white)
+    explain=f"所有股票5日RSI\n的均值为{y[0]}"
+    w, h = idraw.textsize(explain, font=mega3)
+    idraw.text((int((width - w) / 2), 1450), explain, font=mega3, fill=white,align="center")
 
     return section
 
+def northsouth_helper(section,df_nsmoney,pos, i, name,nb):
 
-
-def section_nsmoney(trade_date, df_date,bcolor, pos):
-
-    # add init
-    section = Image.new('RGBA', (width, 2300), bcolor)
-
-    #calculate data
-    df_nsmoney=DB.get(a_path=LB.a_path("Market/CN/Asset/E/hsgt/hsgt"))
-    df_nsmoney=df_nsmoney[df_nsmoney.index <= int(trade_date)]
-    df_nsmoney=df_nsmoney.tail(120)#only check last 120 days as half year data
-    df_nsmoney["zero"]=0
-
-    LB.trade_date_to_vieable(df_nsmoney)
-    df_nsmoney.index.name =""
-
-    #display data
-    for i, (name,nb) in enumerate(zip(["north","south"],["北","南"])):
 
         use_yi = True
         if use_yi:
@@ -1309,7 +1438,7 @@ def section_nsmoney(trade_date, df_date,bcolor, pos):
         else:
             plt.ylabel('百万元', color="white")
 
-        ax=df_nsmoney[f"{name}_money"].plot(color=yellow, legend=False, linewidth=3)
+        ax=df_nsmoney[f"{name}_money"].plot(color=orange, legend=False, linewidth=3)
         df_nsmoney["zero"].plot(color=white, legend=False, linewidth=1)
         plt.axis("on")
 
@@ -1326,9 +1455,6 @@ def section_nsmoney(trade_date, df_date,bcolor, pos):
         ax.tick_params(axis="y",color="white")
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=-45)
 
-        #label = f"{nb}向资金"
-        #plt.annotate(label , xy=(120,df_nsmoney[f"{name}_money"].max()) , ha='center', va='bottom', color="white", size=12)
-
         fig=plt.gcf()
         fig.set_size_inches(6, 2)
 
@@ -1336,16 +1462,54 @@ def section_nsmoney(trade_date, df_date,bcolor, pos):
         img_saver(path=path, dpi=350)
         chart = Image.open(path)
         cw,ch=chart.size
-        section.paste(chart, (int((width-cw)/2), 350+i*1000), mask=chart)
+        section.paste(chart, (int((width-cw)/2), 400), mask=chart)
 
-        idraw = draw_text(section, f"{pos}. {nb}向资金",yoffset=i*(ch+250))
+
+
+def section_northmoney(trade_date, df_date, bcolor, pos):
+
+    # add init
+    section = Image.new('RGBA', (width, 1300), bcolor)
+    idraw = draw_text(section, f"{pos}. 北向资金", background=True)
+
+    #calculate data
+    df_nsmoney=DB.get(a_path=LB.a_path("Market/CN/Asset/E/hsgt/hsgt"))
+    df_nsmoney=df_nsmoney[df_nsmoney.index <= int(trade_date)]
+    df_nsmoney=df_nsmoney.tail(120)#only check last 120 days as half year data
+    df_nsmoney["zero"]=0
+
+    LB.trade_date_to_vieable(df_nsmoney)
+    df_nsmoney.index.name =""
+
+    #display data
+    northsouth_helper(section=section,df_nsmoney=df_nsmoney,pos=pos,i=0,name="north",nb="北")
+    return section
+
+def section_southmoney(trade_date, df_date, bcolor, pos):
+
+    # add init
+    section = Image.new('RGBA', (width, 1300), bcolor)
+    idraw = draw_text(section, f"{pos}. 南向资金", background=True)
+
+    #calculate data
+    df_nsmoney=DB.get(a_path=LB.a_path("Market/CN/Asset/E/hsgt/hsgt"))
+    df_nsmoney=df_nsmoney[df_nsmoney.index <= int(trade_date)]
+    df_nsmoney=df_nsmoney.tail(120)#only check last 120 days as half year data
+    df_nsmoney["zero"]=0
+
+    LB.trade_date_to_vieable(df_nsmoney)
+    df_nsmoney.index.name =""
+
+    #display data
+    northsouth_helper(section=section, df_nsmoney=df_nsmoney, pos=pos, i=1, name="south", nb="南")
 
     return section
+
 
 def section_mid_industry1(trade_date, df_date, bcolor, pos):
 
     # add init
-    section = Image.new('RGBA', (width, 2500), bcolor)
+    section = Image.new('RGBA', (width, 2400), bcolor)
     idraw = draw_text(section, f"{pos}. 行业涨幅",background=True)
     d_quantile=LB.custom_quantile(df=df_date,column="pct_chg",key_val=False,p_setting=[0,1])
 
@@ -1378,23 +1542,23 @@ def section_mid_industry1(trade_date, df_date, bcolor, pos):
             elif pct_chg>0 and pct_chg<=1:
                 colors += [treemapred1]
             elif pct_chg>1 and pct_chg<=2:
-                colors += [treemapred2]
+                colors += [treemapred1]
             elif pct_chg > 2 and pct_chg <= 3:
-                colors += [treemapred3]
+                colors += [treemapred1]
             elif pct_chg > 3:
-                colors += [treemapred4]
+                colors += [treemapred1]
 
             elif pct_chg>=-1 and pct_chg<0:
                 colors += [treemapgreen1]
             elif pct_chg>=-2 and pct_chg<-1:
-                colors += [treemapgreen2]
+                colors += [treemapgreen1]
             elif pct_chg>=-3 and pct_chg<-2:
-                colors += [treemapgreen3]
+                colors += [treemapgreen1]
             elif pct_chg<-3 :
-                colors += [treemapgreen4]
+                colors += [treemapgreen1]
 
 
-        squarify.plot(sizes=sizes, label=label, color=colors, alpha=1,text_kwargs={'fontsize':9, 'fontname':"Microsoft Yahei","color":"#ffffff"},bar_kwargs=dict(linewidth=1, edgecolor="#ffffff"))
+        squarify.plot(sizes=sizes, label=label, color=colors, alpha=1,text_kwargs={'fontsize':10, 'fontname':"Microsoft Yahei","color":"#ffffff"},bar_kwargs=dict(linewidth=1, edgecolor="#ffffff"))
         fig = plt.gcf()
         fig.set_size_inches(6,6)
         plt.axis('off')
@@ -1403,7 +1567,7 @@ def section_mid_industry1(trade_date, df_date, bcolor, pos):
         img_saver(path=path,dpi=400)
         chart = Image.open(path)
         cw,ch=chart.size
-        offset=350
+        offset=400
         section.paste(chart, (int((width-cw)/2)-10, offset+enum*ch), mask=chart)
 
         explain = f"市值越大面积越大"
@@ -1424,7 +1588,7 @@ def create_infographic(trade_date=LB.latest_trade_date()):
     df_date = df_date[df_date["pct_chg"].notna()]
 
     #add sections, size, value vs growth, industry, jijing vs husheng300, zhuti, beta
-    a_func=[section_title, section_index, section_stock_gain,section_mid_industry1, section_short_style,  section_mid_alltime, section_ma, section_rsi,section_nsmoney, section_mid_size, section_mid_valuegrowth, section_mid_beta,  section_long_pe, section_end]
+    a_func=[section_title, section_index, section_stock_gain, section_mid_industry1, section_short_style, section_mid_alltime, section_ma, section_rsi, section_northmoney, section_southmoney,section_mid_size, section_mid_valuegrowth, section_mid_head,section_mid_supplier,section_mid_beta, section_long_pe, section_end]
     a_bcolor=["#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF"]
     a_bcolor=[None]*len(a_func)
     a_sections = [func(trade_date=trade_date, df_date=df_date,bcolor=bcolor,pos=pos) for pos,(func,bcolor) in enumerate(zip(a_func,a_bcolor))]
