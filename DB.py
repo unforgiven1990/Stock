@@ -126,7 +126,7 @@ def update_trade_date(freq="D", market="CN", start_date="00000000", end_date=LB.
         df_trade_cal_D.to_csv("df_trade_cal_D.csv")
 
         # search for the highest non trading sequence in JAN or FEB for each year
-        df_trade_cal_D = LB.trade_date_to_calender(df_trade_cal_D)
+        df_trade_cal_D = LB.df_to_calender(df_trade_cal_D)
         df_trade_cal_D = df_trade_cal_D[df_trade_cal_D["month"] < 4]
 
         # find all distinct years
@@ -156,7 +156,7 @@ def update_trade_date(freq="D", market="CN", start_date="00000000", end_date=LB.
         df = LB.df_between(df, start_date, end_date)
 
         if market == "CN":
-            df = LB.trade_date_to_calender(df) # add year, month, day, weekofmonth etc
+            df = LB.df_to_calender(df) # add year, month, day, weekofmonth etc
             df = update_trade_date_stockcount(df)  # adds E,I,FD count
             df = update_trade_date_indexcount(df)  # adds sh,sz,cy count
             df = update_ny(df) # add new year data

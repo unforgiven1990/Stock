@@ -748,7 +748,7 @@ def predict_cyclemode(df_result, d_preload, debug=0, index="sh"):
     to_cyclemode_pquota(df_result=df_result, abase=f"{index}_ra:buy_sell", index=index)
 
     # check only after year 2000
-    df_result = LB.trade_date_to_calender(df=df_result, add=["year"])
+    df_result = LB.df_to_calender(df=df_result, add=["year"])
     df_result = df_result[df_result["year"] >= 2000]
 
     # remove waste columns
@@ -1288,7 +1288,7 @@ def _deprecated_seasonal_effect(df_result, debug=0):
 
     # PART 2
     df_sh = DB.get_asset(ts_code="000001.SH", asset="I")
-    df_sh = LB.trade_date_to_calender(df_sh)
+    df_sh = LB.df_to_calender(df_sh)
     # overlay of chinese new year effect(compare ny gain against others. If strong then the whole year is strong)
     # in order to give a more real prediction, we conduct the prediction step by step from the past
 
@@ -1621,7 +1621,7 @@ def all2():
             del df_indicator_all[f"{indicator}_{g_ts_code}_counter"]
 
         # cut to 2000 and later
-        df_indicator_all = LB.trade_date_to_calender(df=df_indicator_all, add=["year"])
+        df_indicator_all = LB.df_to_calender(df=df_indicator_all, add=["year"])
         df_indicator_all = df_indicator_all[df_indicator_all["year"] >= 2000]
 
         # Option 1: standardize and normalize at the END

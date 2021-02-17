@@ -24,7 +24,13 @@ from matplotlib.patches import Rectangle
 import matplotlib.patches as patches
 import squarify
 from scipy.stats import gmean
-
+import pyexiv2
+import piexif
+import gc
+import requests
+import json
+import ast
+import imageio
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -89,7 +95,7 @@ def axes_to_round(ax,mutation_aspect=300,mutation_scale=0.5):
                                 )
 
 
-        print("xy,", (bb.width, bb.height))
+
 
         patch.remove()
         # line.patches[i]=p_bbox
@@ -126,6 +132,9 @@ def img_saver(path,dpi=130):
             os.makedirs(folder)
         plt.savefig(path, transparent=True, dpi=dpi ,bbox_inches="tight", pad_inches=0)
     plt.clf()
+    plt.close()
+    plt.close('all')
+    gc.collect()
     return path
 
 def draw_text(section, text, fontsize=h1, left=True,fill="#ffffff",yoffset=0,background=False,align="left"):
@@ -1013,7 +1022,7 @@ def helper_leftorright(section,idraw, divergence,a_leftright_label,a_description
 
 
 
-def section_short_style(trade_date, df_date, bcolor, pos):
+def section_style(trade_date, df_date, bcolor, pos):
     # add init
     section_height=4250
     section = Image.new('RGBA', (width, section_height), bcolor)
@@ -1203,7 +1212,7 @@ def section_mid_fund(trade_date, df_date, bcolor, pos):
     section.paste(chart, (int((width - cw) / 2), 350), mask=chart)
     return section
 
-def section_stock_gain(trade_date, df_date,bcolor,pos):
+def section_distribution(trade_date, df_date, bcolor, pos):
     # add init
     section = Image.new('RGBA', (width, 2500), bcolor)
     idraw = draw_text(section, f"{pos}. 涨跌分布",background=True)
@@ -1460,7 +1469,7 @@ def section_index(trade_date, df_date,bcolor,pos):
     return section
 
 
-def section_mid_alltime(trade_date, df_date, bcolor, pos):
+def section_mid_highlow(trade_date, df_date, bcolor, pos):
 
     # add init
 
@@ -1653,7 +1662,7 @@ def section_rsi(trade_date, df_date,bcolor,pos):
 
     return section
 
-def northsouth_helper(section,df_nsmoney,pos, i, name,nb):
+def northsouth_helper(section,df_nsmoney,pos, i, name,nb,trade_date):
 
 
         use_yi = True
@@ -1711,7 +1720,7 @@ def section_northmoney(trade_date, df_date, bcolor, pos):
     df_nsmoney.index.name =""
 
     #display data
-    northsouth_helper(section=section,df_nsmoney=df_nsmoney,pos=pos,i=0,name="north",nb="北")
+    northsouth_helper(section=section,df_nsmoney=df_nsmoney,pos=pos,i=0,name="north",nb="北",trade_date=trade_date)
     return section
 
 def section_southmoney(trade_date, df_date, bcolor, pos):
@@ -1733,7 +1742,7 @@ def section_southmoney(trade_date, df_date, bcolor, pos):
     df_nsmoney.index.name =""
 
     #display data
-    northsouth_helper(section=section, df_nsmoney=df_nsmoney, pos=pos, i=1, name="south", nb="南")
+    northsouth_helper(section=section, df_nsmoney=df_nsmoney, pos=pos, i=1, name="south", nb="南",trade_date=trade_date)
 
     return section
 
@@ -1801,7 +1810,7 @@ def section_mid_industry1(trade_date, df_date, bcolor, pos):
         fig.set_size_inches(6,6)
         plt.axis('off')
         path = f'Plot/report_D_material/{trade_date}/tree{enum}.png'
-        print(path)
+
         img_saver(path=path,dpi=400)
         chart = Image.open(path)
         cw,ch=chart.size
@@ -1817,7 +1826,21 @@ def section_mid_industry1(trade_date, df_date, bcolor, pos):
     return section
 
 
-def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False):
+def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False,send=False,delete_asset=True,save_section=True):
+
+
+
+    path = f'Plot/report_D_result_hq/每日收盘_{trade_date}.png'
+    if os.path.isfile(path):
+        print(f"{trade_date} infochart exists")
+        if send:
+            #format month-day-year
+
+            trade_date_web=f"{int(trade_date[4:6])}/{trade_date[6:8]}/{trade_date[2:4]}"
+            print(trade_date_web)
+            files=[path]
+            LB.send_mail_report(trade_string=trade_date_web, files=files,receiver="dailystockinfo.uqhpqf@zapiermail.com")
+        return
 
     # init
     print("start")
@@ -1827,9 +1850,10 @@ def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False)
     df_date = df_date[df_date["pct_chg"].notna()]
 
     #add sections, size, value vs growth, industry, jijing vs husheng300, zhuti, beta
-    a_func=[section_title, section_index, section_stock_gain, section_short_style, section_mid_industry1, section_mid_alltime, section_ma, section_northmoney, section_southmoney, section_industry_pe, section_sh_pe,section_cy_pe, section_mid_size, section_mid_valuegrowth, section_mid_beta, section_mid_supplier, section_mid_head, section_mid_cyclic, section_mid_new, section_end]
+    a_func=[section_title, section_index, section_distribution, section_style, section_mid_industry1, section_mid_highlow, section_ma, section_northmoney, section_southmoney, section_industry_pe, section_sh_pe, section_cy_pe, section_mid_size, section_mid_valuegrowth, section_mid_beta, section_mid_supplier, section_mid_head, section_mid_cyclic, section_mid_new, section_end]
     a_bcolor=["#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF"]
     a_bcolor=[None]*len(a_func)
+    a_sections_name=[name.__name__ for name in a_func]
     a_sections = [func(trade_date=trade_date, df_date=df_date,bcolor=bcolor,pos=pos) for pos,(func,bcolor) in enumerate(zip(a_func,a_bcolor))]
 
     #put all sections together
@@ -1842,34 +1866,134 @@ def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False)
     chart = chart.resize((2200, autoheight))
     infographic.paste(chart, (0, 0), )
 
+
+    #save sections
+    if save_section:
+        for section,name in zip(a_sections,a_sections_name):
+            for n in range(10):
+                try:
+                    #png first
+                    path = f'Plot/report_D_section/{trade_date}/{name}.png'
+                    section.save(path,optimize=True)
+
+                    # jpeg second
+                    if False:
+                        section = section.convert('RGB')
+                        path = f'Plot/report_D_section/{trade_date}/{name}.jpeg'
+                        section.save(path, 'jpeg', quality=10,optimize=True,progressive=True)
+
+                    break
+                except:
+                    folder = "/".join(path.rsplit("/")[:-1])
+                    if not os.path.exists(folder):
+                        os.makedirs(folder)
+
+
     #add sections
     y_helper=0
     for section in a_sections:
         infographic.paste(section,( 0, y_helper),mask=section)
         y_helper += section.size[1]
 
-
     #show and save
     if showimg:
         infographic.show()
 
-    if png:
-        path=f'Plot/report_D_result/每日收盘{trade_date}.png'
-        infographic.save(path)
-    else:
-        infographic = infographic.convert('RGB')
-        path = f'Plot/report_D_result/每日收盘_{trade_date}.jpeg'
-        infographic.save(path, 'jpeg', dpi=[300, 300], quality=10)
+
+    path=f'Plot/report_D_result_hq/每日收盘{trade_date}.png'
+    infographic.save(path)
+
+    infographic = infographic.convert('RGB')
+    path = f'Plot/report_D_result_lq/每日收盘_{trade_date}.jpeg'
+    infographic.save(path, 'jpeg', quality=10, optimize=True, progressive=True)
+
+    #delete generated assets and only keep the result
+    if delete_asset:
+        path = f'Plot/report_D_material/{trade_date}'
+        if os.path.isdir(path):
+            os.remove(path)
 
     return path
 
+
+def get_request(url):
+    r= requests.get(url)
+    return r
+
+
+def server_existing_infocharts(version_test="version-test"):
+    # make request to see what the server already has
+    url = f"https://www.5849cai.com/{version_test}/api/1.1/obj/infochart"
+    r = requests.get(url)
+    decode_r = r.content.decode("UTF-8")
+    dict_str = ast.literal_eval(decode_r)
+    a_result = dict_str["response"]["results"]
+    for dict_enty in a_result:
+        print()
+        for key,data in dict_enty.items():
+            print(key,":",data)
+
+
+def server_post_infochart(version_test="version-test"):
+    # make request to see what the server already has
+    url = f"https://www.5849cai.com/{version_test}/api/1.1/obj/infochart"
+    test = {
+        "Image": "",
+        "Created Date": "",
+        "Created By": "",
+        "Modified Date": "",
+        "Tradedate": "egal",
+        "_id": "egalasadasdsad",
+        "_type": "custom.infochart"
+    }
+    test_json=json.dumps(test)
+    r=requests.post(url, json=test_json,data=test_json)
+    print(r)
+
+def server_delete_infochart(version_test="version-test",id=""):
+    # make request to see what the server already has
+    url = f"https://www.5849cai.com/{version_test}/api/1.1/obj/infochart/{id}"
+    r=requests.delete(url)
+    print(r)
+
+def server_patch_infochart(version_test="version-test",id=""):
+    # make request to see what the server already has
+    url = f"https://www.5849cai.com/{version_test}/api/1.1/obj/infochart/{id}"
+    test={
+        "uploadImage": "https://www.baidu.com/img/flexible/logo/pc/result.png",
+        "uploadTradedate": "1/10/21",
+        "uploadSections": ["https://www.baidu.com/img/flexible/logo/pc/result.png","https://www.baidu.com/img/flexible/logo/pc/result.png","https://www.baidu.com/img/flexible/logo/pc/result.png"],
+          }
+
+    test_json=json.dumps(test,indent=4)
+    r=requests.post(url, json=test_json)
+    print(r)
+
+def workflow_api():
+    url = f"https://www.5849cai.com/version-test/api/1.1/wf/uploadchart"
+    test = {
+        "Image": "",
+        "Created Date": "",
+        "Created By": "",
+        "Modified Date": "",
+        "Tradedate": "egal",
+        "_id": "egalasadasdsad",
+        "_type": "custom.infochart"
+    }
+    test_json = json.dumps(test)
+    r = requests.post(url, json=test_json, data=test_json)
+    print(r)
 
 if __name__ == '__main__':
 
     do=3
 
+    if do==0:
+        workflow_api()
 
-    if do==1:
+
+
+    elif do==1:
         trade_date = fr"20210118"
         trade_date = fr"20210119"
         trade_date = fr"20080630"
@@ -1888,9 +2012,27 @@ if __name__ == '__main__':
 
     elif do==3:
         df_trade_date = DB.get_trade_date()
-        for trade_date in df_trade_date.index[::-1]:
+        for trade_date in df_trade_date.index[::-3]:
             print(f"Infochart for trade_date {trade_date}")
             try:
                 create_infographic(trade_date=str(trade_date), showimg=False)
+                gc.collect()
             except Exception as e:
                 print(e)
+    elif do==4:
+        #send data to website
+        df_trade_date = DB.get_trade_date()
+        for trade_date in df_trade_date.index[:-10:-1]:
+            print(f"Infochart for trade_date {trade_date}")
+            try:
+                create_infographic(trade_date=str(trade_date), showimg=False,send=False)
+                gc.collect()
+            except Exception as e:
+                print(e)
+
+    elif do==5:
+        from webptools import cwebp
+        #imageio.plugins.freeimage.download()
+        sourcepath = f"Plot/plot.jpg"
+        destipath = f"Plot/plot.webp"
+        print(cwebp(sourcepath,destipath,"-q 80"))

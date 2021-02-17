@@ -151,7 +151,7 @@ def trade_date_to_weekofmonth(trade_date):
     trade_date = trade_date_to_datetime(trade_date)
     return (trade_date.isocalendar()[1] - trade_date.replace(day=1).isocalendar()[1] + 1)
 
-def trade_date_to_calender(df,add=["year","season","month","day","weekofyear","dayofweek"]):
+def df_to_calender(df, add=["year", "season", "month", "day", "weekofyear", "dayofweek"]):
     """
     str trade_date to seasonal stats
     return:
@@ -1046,16 +1046,16 @@ def mail_to_multipart(mail):
     mail_new.attach(mail)
     return mail_new
 
-def send_mail_report(trade_string="what to buy and sell",files=["test.csv"]):
+def send_mail_report(trade_string="what to buy and sell",files=["test.csv"],receiver = "sizhe.huang@guanyueinternational.com"):
     sender_email = "sizhe.huang@guanyueinternational.com"
-    receiver = "sizhe.huang@guanyueinternational.com"
+
 
     password = "inception0Ba22101964!"
     msg = EmailMessage()
     msg.set_content(trade_string)
     msg['Subject'] = trade_string
-    msg['From'] = "cj@python.org"
-    msg['To'] = "sizhe.huang@guanyueinternational.com"
+    msg['From'] = "sizhe.huang@guanyueinternational.com"
+    msg['To'] = receiver
 
     for path in files:
         part = MIMEBase('application', "octet-stream")
@@ -1338,7 +1338,7 @@ if __name__ == '__main__':
     df_result=pd.DataFrame()
     for index in LB.c_index():
         df_asset = DB.get_asset(ts_code=index,asset="I")
-        df_asset = LB.trade_date_to_calender(df_asset, ["year", "month"])
+        df_asset = LB.df_to_calender(df_asset, ["year", "month"])
 
         for year in range(2000,2022):
             try:

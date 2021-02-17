@@ -257,7 +257,7 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
     df_ts_code = DB.get_ts_code(a_asset=["I", "E", "FD", "G"])
     # todo make these index variable by past performance and not hard coded
     d_stuff = {
-        "I": ["000001.SH", "399001.SZ", "399006.SZ", "399403.SZ", "399997.SZ", "000808.SH"],
+        "I": ["000001.SH", "399001.SZ", "399006.SZ", "399403.SZ", "399997.SZ"],
         "E": [],
         "FD": ["513100.SH", "160133.SZ", "163415.SZ", "169101.SZ", "159928.SZ", "163412.SZ", "512010.SH"],
         "G": ["asset_E"],
@@ -272,13 +272,13 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
                 boll, bolldown, bollup = Alpha.boll(df=df, abase="close", freq1=20, freq2=2, inplace=True)
                 df_simple.at[ts_code, "name"] = df_ts_code.at[ts_code, "name"]
                 df_simple.at[ts_code, f"boll_{freqn}"] = decide = df[boll].iat[-1]
-                if freqn == "D":
-                    if decide <= 0.2:
-                        df_simple.at[ts_code, f"action"] = "buy"
-                    elif decide > 0.2 and decide < 0.8:
-                        df_simple.at[ts_code, f"action"] = "hold"
-                    elif decide >= 0.8:
-                        df_simple.at[ts_code, f"action"] = "sell"
+
+                if decide <= 0.2:
+                    df_simple.at[ts_code, f"action_{freqn}"] = "buy"
+                elif decide > 0.2 and decide < 0.8:
+                    df_simple.at[ts_code, f"action_{freqn}"] = "hold"
+                elif decide >= 0.8:
+                    df_simple.at[ts_code, f"action_{freqn}"] = "sell"
     d_df[f"overview"] = df_simple
 
 
@@ -382,7 +382,7 @@ if __name__ == '__main__':
     import Alpha
 
 
-    for do in [0]:
+    for do in [1]:
 
         #loop
         if do == 0:

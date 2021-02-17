@@ -82,4 +82,38 @@ def pattern_bull():
 
 
 
+def after_big_down():
+    #this tries to answer the question if stock has been down 30%, how much do they gain after that_
 
+    """
+    test to see if stock has lost n% in last 60 days, (except 2008,2015), who to they recover?
+    Result:
+    - the more they lose, the more they gain on average. But the std is very different. So which means I don't Like. I like things with small deviation.
+    - Difference: after 20 days losing 40%, there is more bounce than 60 days losing 40%.
+    - this finding matches the idea of mean reversal. the more gain the less gain in the future
+
+
+    :return:
+    """
+    df_ts_code=DB.get_ts_code()
+    df_result=pd.DataFrame()
+    for ts_code in df_ts_code.index:
+        print(ts_code)
+        df_asset=DB.get_asset(ts_code)
+        df_asset=LB.df_to_calender(df_asset)
+        df_asset=df_asset[df_asset["year"] != 2008]
+        df_asset=df_asset[df_asset["year"] != 2015]
+        df_asset=df_asset[df_asset["year"] != "2008"]
+        df_asset=df_asset[df_asset["year"] != "2015"]
+
+
+        for gain in [0.9,0.8,0.7,0.6,0.5,0.4,0.3]:
+            df_result.at[ts_code,f"mean_lose{gain}"]=df_asset.loc[df_asset["pgain20"]<gain,"fgain60"].mean()
+        for gain in [1.1,1.2,1.3,1.4,1.5,1.6,1.7]:
+            df_result.at[ts_code,f"mean_win{gain}"]=df_asset.loc[df_asset["pgain20"]>gain,"fgain60"].mean()
+
+    df_result.to_csv("after 20daydown.csv")
+
+
+
+after_big_down()
