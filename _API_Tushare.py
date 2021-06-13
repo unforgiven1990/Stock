@@ -107,6 +107,9 @@ def my_index_basic(market="SSE"):
 def my_index_member(index_code):
     return get(func=pro.index_member, fname="pro.index_member", kwargs=locals())
 
+def my_index_weight(index_code, end_date):
+    return get(func=pro.index_weight, fname="pro.index_weight", kwargs=locals())
+
 
 def my_fund_basic(market="E", fields="ts_code,name,fund_type,list_date,delist_date,issue_amount,m_fee,c_fee,benchmark,invest_type,type,market,custodian,management"):
     return get(func=pro.fund_basic, fname="pro.fund_basic", kwargs=locals())
@@ -116,7 +119,7 @@ def my_fund_daily(ts_code, start_date="00000000", end_date="30000000"):
     return get(func=pro.fund_daily, fname="pro.fund_daily", kwargs=locals())
 
 
-def my_fund_nav(ts_code, market="O"):
+def my_fund_nav(ts_code):
     return get(func=pro.fund_nav, fname="pro.fund_nav", kwargs=locals())
 
 
@@ -140,6 +143,8 @@ def my_cb_daily(ts_code="", trade_date="", start_date="00000000", end_date="3000
 def my_yc_cb(ts_code="", curve_type="", trade_date="", start_date="00000000", end_date="30000000"):
     return get(func=pro.yc_cb, fname="pro.yc_cb", kwargs=locals())
 
+def my_margin(start_date,end_date):
+    return get(func=pro.margin, fname="pro.margin", kwargs=locals(), df_fallback=LB.df_empty("margin_detail"))
 
 def my_margin_detail(ts_code):
     return get(func=pro.margin_detail, fname="pro.margin_detail", kwargs=locals(), df_fallback=LB.df_empty("margin_detail"))
@@ -198,8 +203,20 @@ if __name__ == '__main__':
     TODO kwargize all tushare_api functions to make htem more versatile
     """
     import DB
-
-    df=my_pro_bar(ts_code="000960.SH",asset="I",freq="D",start_date="00000000",end_date="99999999")
-
+    import LB
+    import Alpha
+    df=my_margin(start_date="20130101",end_date="20210321")
     print(df)
-    df.to_csv(f"index.csv", encoding="utf-8_sig")
+    df=LB.df_reverse_reindex(df)
+    df["ma60"]=df["rqye"].rolling(60).mean()
+    df["rqye_rolling"]=Alpha.fol_rolling_norm(df=df,abase="ma60",inplace=False)
+    df["rqye_rolling60"]=Alpha.rollingnorm(df=df,abase="ma60",inplace=False,freq=60)
+    df=df.set_index("trade_date",drop=True)
+    df.index=df.index.astype(int)
+
+    df_sh=DB.get_asset("000001.SH",asset="I")
+    df_cy=DB.get_asset("399006.SZ",asset="I")
+    df["sh"]=df_sh["close"]
+    df["cy"]=df_cy["close"]
+
+    df.to_csv("rzrq.csv")

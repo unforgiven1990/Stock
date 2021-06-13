@@ -31,7 +31,8 @@ import requests
 import json
 import ast
 import imageio
-
+import math
+from functools import partial
 from PIL import Image, ImageDraw, ImageFont
 
 # init
@@ -442,23 +443,50 @@ def linechart_helper(section,idraw,name,trade_date,a_index,a_summary):
         return -1
 
 
-def section_industry_pe(trade_date, df_date, bcolor, pos):
+def section_industry_pe(trade_date, df_date, bcolor, pos, il=1):
     # add init
-    section = Image.new('RGBA', (width, 5000), bcolor)
-    idraw = draw_text(section, f"{pos}. 行业市盈率",background=True)
 
 
+    """
+    There are 3 ways to calcualte the PE
+    1. Combine industry average PE in asset_G, Calculate using min-max
+    2. Combine industry average PE in asset_G, Calculate using rank
+    3. Calculate individual stock, Calculate using min-max, combine to asset_G
+    4. Calculate individual stock, Calculate using rank, combine to asset_G
+   
+    Currently this function is using method 2.
+    
+    
+    1. By definition, the minmax method is not the best PE mean method. because 99days could be pe between 0 and 10, 1 day could be pe 50. Then all 99 days seems cheap. Rank is a better representation.
+    It is a very good question. 
+    
+    """
     df_sort=pd.DataFrame()
-    for industry in df_date["sw_industry1"].unique():
-        if industry is None:
-            continue
-        df_asset_g=DB.get_asset(ts_code=f"sw_industry1_{industry}",freq="D",asset="G")
-        df_asset_g=df_asset_g[(df_asset_g.index>=countfrom)& (df_asset_g.index<= int(trade_date))]
-        df_sort.at[industry,"min"]=df_asset_g["pe_ttm"].min()
-        df_sort.at[industry,"max"]=df_asset_g["pe_ttm"].max()
-        df_sort.at[industry,"cur"]=df_asset_g["pe_ttm"].iat[-1]
-        cur2=df_asset_g["pe_ttm"].rank(pct=True)
-        df_sort.at[industry,"cur2"]=cur2.iat[-1]
+
+    #add standard industry
+    for industry in df_date[f"sw_industry{il}"].unique():
+        try:
+            if industry is None:
+                continue
+
+            if len(industry)>4:
+                industry=industry[0:4]
+            df_asset_g=DB.get_asset(ts_code=f"sw_industry{il}_{industry}",freq="D",asset="G")
+            df_asset_g=df_asset_g[(df_asset_g.index>=countfrom)& (df_asset_g.index<= int(trade_date))]
+
+            if df_asset_g.empty:
+                continue
+
+            cur2 = df_asset_g["pe_ttm"].rank(pct=True)
+            if math.isnan(cur2.iat[-1]):
+                continue
+            df_sort.at[industry,"min"]=df_asset_g["pe_ttm"].min()
+            df_sort.at[industry,"max"]=df_asset_g["pe_ttm"].max()
+            df_sort.at[industry,"cur"]=temp1=df_asset_g["pe_ttm"].iat[-1]
+            df_sort.at[industry,"cur2"]=temp2=cur2.iat[-1]
+
+        except:
+            pass
 
     #add asset_E as industry
     for index in ["创业板","主板","中小板"]:
@@ -475,6 +503,61 @@ def section_industry_pe(trade_date, df_date, bcolor, pos):
             df_sort.at[f"{index}", "cur2"] = cur2.iat[-1]
         except:
             print(f"{index} probably doesnt exist yet")
+
+
+
+    # add custom index and groups
+    df_ts_code_I=DB.get_ts_code(a_asset=["I"])
+    a_custom_color=[]
+    for index in LB.c_imp_index()["I"]:
+        """
+        1. for each index, get all his con_ts_code
+        2. for each con_code calculate rank for today
+        2. for each con_code calculate min,max,cur for today
+        3. add all concode together
+        """
+
+        #manually create index member asset
+        df_index_weight=DB.get_asset(ts_code=index,asset="I",freq="index_weight")
+        df_index_weight=df_index_weight.reset_index(drop=False)
+        df_index_result=pd.DataFrame()
+        df_index_result["pe_ttm"] = np.nan
+        df_index_result["count"] = 1
+
+        latest_index_weight_date=df_index_weight["trade_date"].unique()[0]
+        df_index_weight=df_index_weight[df_index_weight["trade_date"]==latest_index_weight_date]
+        for con_code in df_index_weight["con_code"]:
+            try:
+                print("calculating con code", con_code)
+                df_asset_e=DB.get_asset(ts_code=con_code,asset="E",freq="D")
+                df_asset_e=df_asset_e[ df_asset_e.index <= int(trade_date)]
+                if df_asset_e.empty:
+                    continue
+                df_asset_e["count"]=1
+                df_asset_e["pe_ttm"]=df_asset_e["pe_ttm"].clip(0,200)
+                df_index_result["pe_ttm"]=df_index_result["pe_ttm"].add(df_asset_e["pe_ttm"],fill_value=0)
+                df_index_result["count"]=df_index_result["count"].add(df_asset_e["count"],fill_value=0)
+            except:
+                pass
+        df_index_result["pe_ttm"] =df_index_result["pe_ttm"]/df_index_result["count"]
+        df_index_result.to_csv("test.csv")
+
+        #after creating the index, we add the index result to all other G
+        try:
+            df_asset_g = df_index_result
+            df_asset_g = df_asset_g[(df_asset_g.index >= countfrom) & (df_asset_g.index <= int(trade_date))]
+            if df_asset_g.empty:
+                continue
+
+            index_name=df_ts_code_I.at[index,"name"]
+            a_custom_color+=[index_name]
+            df_sort.at[f"{index_name}", "min"] = df_asset_g["pe_ttm"].min()
+            df_sort.at[f"{index_name}", "max"] = df_asset_g["pe_ttm"].max()
+            df_sort.at[f"{index_name}", "cur"] = df_asset_g["pe_ttm"].iat[-1]
+            cur2 = df_asset_g["pe_ttm"].rank(pct=True)
+            df_sort.at[f"{index_name}", "cur2"] = cur2.iat[-1]
+        except:
+            print(f"{index_name} probably doesnt exist yet")
 
 
     df_sort["norm"]= (((1 - 0) * (df_sort["cur"] - df_sort["min"])) / (df_sort["max"] - df_sort["min"])) + 0
@@ -498,8 +581,12 @@ def section_industry_pe(trade_date, df_date, bcolor, pos):
     for i in range(0, len(lines)):
         if df_sort.index[i] in ["创业板","主板","中小板"]:
             lines[i].set_color(red)
+        elif df_sort.index[i] in a_custom_color:
+            lines[i].set_color(green)
         else:
             lines[i].set_color(orange)
+
+
 
     ax = plt.gca()
     ax.set_xlim([-70, 130])
@@ -511,7 +598,7 @@ def section_industry_pe(trade_date, df_date, bcolor, pos):
     ax.xaxis.set_visible(False)
     ax.yaxis.set_visible(False)
     plt.yticks(color="#ffffff")
-    manu=-0.47
+    manu_y=-0.38
 
 
     #draw label
@@ -523,13 +610,13 @@ def section_industry_pe(trade_date, df_date, bcolor, pos):
     for enum, i in enumerate(range(len(x))):
         try:
             # LEFT LABEL
-            plt.annotate(df_sort.index[i], xy=(-70, -0.42+i*1), ha='left', va='bottom', color=white, size=12)
+            plt.annotate(df_sort.index[i], xy=(-70, manu_y+i*1), ha='left', va='bottom', color=white, size=12)
 
             # LEFT min
-            plt.annotate(f"{int(df_sort['min'].iat[i])}", xy=(-10, manu + i * 1), ha='center', va='bottom', color=white, size=12)
+            plt.annotate(f"{int(df_sort['min'].iat[i])}", xy=(-10, manu_y + i * 1), ha='center', va='bottom', color=white, size=12)
 
             # RIGHT max
-            plt.annotate(f"{int(df_sort['max'].iat[i])}", xy=(105, manu + i * 1), ha='left', va='bottom', color=white, size=12)
+            plt.annotate(f"{int(df_sort['max'].iat[i])}", xy=(105, manu_y + i * 1), ha='left', va='bottom', color=white, size=12)
 
             # CENTER curr
             percent=int(df_sort['cur2'].iat[i])
@@ -541,21 +628,29 @@ def section_industry_pe(trade_date, df_date, bcolor, pos):
                 adjust_dist = +5
                 ha="left"
                 color = gray
-            plt.annotate(f"{int(df_sort['cur'].iat[i])}", xy=(int(df_sort['cur2'].iat[i]+adjust_dist), manu + i * 1), ha=ha, va='bottom', color=color, size=12)
+            plt.annotate(f"{int(df_sort['cur'].iat[i])}", xy=(int(df_sort['cur2'].iat[i]+adjust_dist), manu_y + i * 1), ha=ha, va='bottom', color=color, size=12)
         except:
             pass
 
     fig = plt.gcf()
-    fig.set_size_inches(4, 11)
+    if il==1:
+        fig.set_size_inches(4, 18)
+    elif il==2:
+        fig.set_size_inches(4, 38)
 
     # use this to draw histogram of your data
     path = f'Plot/report_D_material/{trade_date}/pe_ttm.png'
     img_saver(path=path, dpi=560)
     chart = Image.open(path)
     cw, ch = chart.size
+
+    section = Image.new('RGBA', (width, ch+300), bcolor)
+    idraw = draw_text(section, f"{pos}. 行业市盈率", background=True)
     section.paste(chart, (int((width - cw) / 2)+20, 200), mask=chart)
+
     return section
 
+section_industry_pe2=partial(section_industry_pe, il=2)
 
 def pe_helper(section,bcolor,index_G,pos):
 
@@ -632,7 +727,7 @@ def section_sh_pe(trade_date, df_date, bcolor, pos):
 def section_cy_pe(trade_date, df_date, bcolor, pos):
     # add init
     section = Image.new('RGBA', (width, 1850), bcolor)
-    return pe_helper(section=section,bcolor=bcolor,index_G=["创业板","中小板"],pos=pos)
+    return pe_helper(section=section,bcolor=bcolor,index_G=["创业板"],pos=pos)
 
 
 
@@ -1830,7 +1925,7 @@ def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False,
 
 
 
-    path = f'Plot/report_D_result_hq/每日收盘_{trade_date}.png'
+    path = f'Plot/report_D_result_lq/每日收盘_{trade_date}.jpeg'
     if os.path.isfile(path):
         print(f"{trade_date} infochart exists")
         if send:
@@ -1840,7 +1935,7 @@ def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False,
             print(trade_date_web)
             files=[path]
             LB.send_mail_report(trade_string=trade_date_web, files=files,receiver="dailystockinfo.uqhpqf@zapiermail.com")
-        return
+        return path
 
     # init
     print("start")
@@ -1850,10 +1945,16 @@ def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False,
     df_date = df_date[df_date["pct_chg"].notna()]
 
     #add sections, size, value vs growth, industry, jijing vs husheng300, zhuti, beta
-    a_func=[section_title, section_index, section_distribution, section_style, section_mid_industry1, section_mid_highlow, section_ma, section_northmoney, section_southmoney, section_industry_pe, section_sh_pe, section_cy_pe, section_mid_size, section_mid_valuegrowth, section_mid_beta, section_mid_supplier, section_mid_head, section_mid_cyclic, section_mid_new, section_end]
+    a_func=[section_title, section_index, section_distribution, section_style, section_mid_industry1, section_mid_highlow, section_ma, section_northmoney, section_southmoney, section_industry_pe,section_industry_pe2,section_sh_pe, section_cy_pe, section_mid_size, section_mid_valuegrowth, section_mid_beta, section_mid_supplier, section_mid_head, section_mid_cyclic, section_mid_new, section_end]
+    #a_func=[section_industry_pe]
     a_bcolor=["#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF","#1D37FF"]
     a_bcolor=[None]*len(a_func)
-    a_sections_name=[name.__name__ for name in a_func]
+    a_sections_name=[]
+    for name in a_func:
+        try:
+            a_sections_name=a_sections_name+[name.__name__]
+        except:
+            a_sections_name = a_sections_name + ["industry_pe2"]
     a_sections = [func(trade_date=trade_date, df_date=df_date,bcolor=bcolor,pos=pos) for pos,(func,bcolor) in enumerate(zip(a_func,a_bcolor))]
 
     #put all sections together
@@ -1908,10 +2009,10 @@ def create_infographic(trade_date=LB.latest_trade_date(),showimg=True,png=False,
     infographic.save(path, 'jpeg', quality=10, optimize=True, progressive=True)
 
     #delete generated assets and only keep the result
-    if delete_asset:
+    """if delete_asset:
         path = f'Plot/report_D_material/{trade_date}'
         if os.path.isdir(path):
-            os.remove(path)
+            os.remove(path)"""
 
     return path
 
@@ -1958,16 +2059,32 @@ def server_delete_infochart(version_test="version-test",id=""):
 
 def server_patch_infochart(version_test="version-test",id=""):
     # make request to see what the server already has
-    url = f"https://www.5849cai.com/{version_test}/api/1.1/obj/infochart/{id}"
-    test={
-        "uploadImage": "https://www.baidu.com/img/flexible/logo/pc/result.png",
-        "uploadTradedate": "1/10/21",
-        "uploadSections": ["https://www.baidu.com/img/flexible/logo/pc/result.png","https://www.baidu.com/img/flexible/logo/pc/result.png","https://www.baidu.com/img/flexible/logo/pc/result.png"],
-          }
+    url = f"https://www.5849cai.com/{version_test}/api/1.1/obj/Infochart"
+    #url = f"https://webhook.site/52c1560e-d807-444d-a4fc-ab53f54f4b7b"
+    #url = f"https://5849cai.com/version-test/api/1.1/wf"
+    #url = f"https://adasdasd.requestcatcher.com/test"
+    test={ "Tradedate":"fu"}
 
-    test_json=json.dumps(test,indent=4)
-    r=requests.post(url, json=test_json)
-    print(r)
+    headers={"Content-type":"application/json",
+             "Accept-Encoding":"deflate, gzip",
+             "Connection": None,
+             "X-Real-IP":"45.135.186.115"
+
+             }
+    test_json=json.dumps(test)
+    print(test_json)
+    print(test)
+    r=requests.post(url, data=test ,headers=headers)
+
+    print("request.url",r.request.url)
+    print("request.body",r.request.body)
+    print("request.headers",r.request.headers)
+    print("content",r.content)
+    print("text",r.text)
+    print("requests",requests)
+    print("response",r)
+
+
 
 def workflow_api():
     url = f"https://www.5849cai.com/version-test/api/1.1/wf/uploadchart"
@@ -1986,18 +2103,19 @@ def workflow_api():
 
 if __name__ == '__main__':
 
-    do=3
+    do=2
 
-    if do==0:
+    #server_patch_infochart()
+
+    if do==-1:
         workflow_api()
 
-
-
     elif do==1:
+
         trade_date = fr"20210118"
         trade_date = fr"20210119"
         trade_date = fr"20080630"
-        trade_date = fr"20100331"
+        trade_date = fr"20210305"
         create_infographic(trade_date=trade_date)
     elif do==2:
         df_trade_date = DB.get_trade_date()
@@ -2012,7 +2130,7 @@ if __name__ == '__main__':
 
     elif do==3:
         df_trade_date = DB.get_trade_date()
-        for trade_date in df_trade_date.index[::-3]:
+        for trade_date in df_trade_date.index[::-1]:
             print(f"Infochart for trade_date {trade_date}")
             try:
                 create_infographic(trade_date=str(trade_date), showimg=False)

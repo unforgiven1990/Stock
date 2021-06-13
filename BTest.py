@@ -567,7 +567,7 @@ def btest(settings=[{}]):
                 df_last_simulated_trade = df_trade_h.loc[df_trade_h["trade_date"] == str_last_simulated_trade, ["trade_type", "name"]]
                 str_last_simulated_trade = df_last_simulated_trade.to_string(header=False, index=True)
                 str_last_simulated_trade = str(str_last_simulated_trade) + ": \n" + setting["name"] + "\n" + str_last_simulated_trade
-                LB.send_mail(str_last_simulated_trade)
+                LB.send_mail_to_me(str_last_simulated_trade)
 
         except Exception as e:
             LB.sound("error.mp3")

@@ -84,7 +84,7 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
         trade_date = LB.latest_trade_date(market=market)
 
     excel_path = f"Market/{market}/Report/{market}_report_{trade_date}.xlsx"
-    send_mail_title = f"{market} {str(trade_date)}"
+    send_mail_title = f"{str(trade_date)}"
 
     files=[]
     if os.path.isfile(f"D:\Stock/{excel_path}"):
@@ -92,11 +92,13 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
         LB.file_open(f"D:\Stock/Market/{market}/Report/{market}_report_{trade_date}.xlsx")
 
 
-        if send_infographic:
+        if send_infographic and market=="CN":
             infochart=Infographic.create_infographic(trade_date=str(trade_date))
+            print(infochart)
             files += [infochart]
 
-        files += [excel_path]
+        #files += [excel_path]
+        print(files)
         if send_report:
             LB.send_mail_report(trade_string=send_mail_title,files=files)
 
@@ -253,33 +255,61 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
 
     #fixed summary
 
-    df_simple = pd.DataFrame()
+    df_simple_s = pd.DataFrame()
+    df_simple_c = pd.DataFrame()
     df_ts_code = DB.get_ts_code(a_asset=["I", "E", "FD", "G"])
-    # todo make these index variable by past performance and not hard coded
-    d_stuff = {
-        "I": ["000001.SH", "399001.SZ", "399006.SZ", "399403.SZ", "399997.SZ"],
-        "E": [],
-        "FD": ["513100.SH", "160133.SZ", "163415.SZ", "169101.SZ", "159928.SZ", "163412.SZ", "512010.SH"],
-        "G": ["asset_E"],
 
-    }
-    for asset, iarray in d_stuff.items():
-        for ts_code in iarray:
-            df = DB.get_asset(ts_code=ts_code, asset=asset)
-            df = df[df.index <= trade_date]
-            for freqn in ["D", "W"]:
-                df = LB.df_to_freq(df, freqn)
-                boll, bolldown, bollup = Alpha.boll(df=df, abase="close", freq1=20, freq2=2, inplace=True)
-                df_simple.at[ts_code, "name"] = df_ts_code.at[ts_code, "name"]
-                df_simple.at[ts_code, f"boll_{freqn}"] = decide = df[boll].iat[-1]
+    def add_overview(df_simple,array_list):
+        for asset, iarray in array_list.items():
+            for ts_code in iarray:
+                df = DB.get_asset(ts_code=ts_code, asset=asset)
+                df = df[df.index <= trade_date]
 
-                if decide <= 0.2:
-                    df_simple.at[ts_code, f"action_{freqn}"] = "buy"
-                elif decide > 0.2 and decide < 0.8:
-                    df_simple.at[ts_code, f"action_{freqn}"] = "hold"
-                elif decide >= 0.8:
-                    df_simple.at[ts_code, f"action_{freqn}"] = "sell"
-    d_df[f"overview"] = df_simple
+                for freqn in ["D", "W","M"]:
+                    df = LB.df_to_freq(df, freqn)
+
+                    # add freq boll
+                    boll, bolldown, bollup = Alpha.boll(df=df, abase="close", freq1=20, freq2=2, inplace=True)
+                    df_simple.at[ts_code, "name"] = df_ts_code.at[ts_code, "name"]
+                    df_simple.at[ts_code, f"boll_{freqn}"] = decide = df[boll].iat[-1]
+
+                    if freqn in ["D","W"]:
+                        if decide <= 0.2:
+                            df_simple.at[ts_code, f"action_{freqn}"] = "buy"
+                        elif decide > 0.2 and decide < 0.8:
+                            df_simple.at[ts_code, f"action_{freqn}"] = "hold"
+                        elif decide >= 0.8:
+                            df_simple.at[ts_code, f"action_{freqn}"] = "sell"
+                    elif freqn in ["M"]:
+                        if decide <= 0.5:
+                            df_simple.at[ts_code, f"action_{freqn}"] = "sell"
+                        elif decide > 0.5:
+                            df_simple.at[ts_code, f"action_{freqn}"] = "buy"
+
+
+                    df["boll_dist_all"] = df[bollup] / df[bolldown]
+                    df_simple.at[ts_code, f"boll_{freqn}_spread"] = df["boll_dist_all"].iat[-1]
+
+
+
+    add_overview(df_simple_s, LB.c_imp_index())#all manual ts_code
+
+    df_industry2 = DB.get_ts_code(a_asset=["G"])
+    df_industry2["indexhelper"] = df_industry2.index
+    df_industry2["what"] = ("sw_industry2" == df_industry2["indexhelper"].str.slice(0, 12))
+    df_industry2 = df_industry2[df_industry2["what"] == True]
+    d_industrz2 = {"G": [x for x in df_industry2.index]}
+    print(d_industrz2)
+    add_overview(df_simple_c, d_industrz2)#all industry lv1 tscode
+
+    try:
+        df_simple_s=df_simple_s.sort_values(by=["boll_W","boll_D","boll_M"])
+        df_simple_c=df_simple_c.sort_values(by=["boll_W","boll_D","boll_M"])
+    except:
+        pass
+
+    d_df[f"overview_s"] = df_simple_s
+    d_df[f"overview_c"] = df_simple_c
 
 
     # 6. group gain by
@@ -295,19 +325,21 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
     d_df[f"fgain"] = df_fgain_summary
 
     #filter stock
-    df_concept=  pd.read_excel(xls, sheet_name="concept")
-    df_concept=df_concept.sort_values("pgain20",ascending=False)
-    d_df[f"concept"] =df_concept
+    if market == "CN":
+        df_concept=  pd.read_excel(xls, sheet_name="concept")
+        df_concept=df_concept.sort_values("pgain20",ascending=False)
+        d_df[f"concept"] =df_concept
 
     #龙头股
-    df_head=pd.DataFrame()
-    for industry in df_bullishness_overview_original["sw_industry3"].unique():
-        df_filter=df_bullishness_overview_original[df_bullishness_overview_original["sw_industry3"]==industry]
-        df_filter=df_filter.sort_values("total_mv",ascending=False)
-        df_head=df_head.append(df_filter.head(1))
+    if market == "CN":
+        df_head=pd.DataFrame()
+        for industry in df_bullishness_overview_original["sw_industry3"].unique():
+            df_filter=df_bullishness_overview_original[df_bullishness_overview_original["sw_industry3"]==industry]
+            df_filter=df_filter.sort_values("total_mv",ascending=False)
+            df_head=df_head.append(df_filter.head(1))
 
-    df_head=LB.reorder_columns(df_head,ideal_order_column)
-    d_df[f"head"] = df_head
+        df_head=LB.reorder_columns(df_head,ideal_order_column)
+        d_df[f"head"] = df_head
 
 
     #save
@@ -321,7 +353,7 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
         except:
             print("for some reason windows can't find file even if it is there")
 
-    if send_infographic:
+    if send_infographic and market=="CN":
         infochart = Infographic.create_infographic(trade_date=str(trade_date))
         files += [infochart]
 
@@ -352,10 +384,10 @@ def loop():
         hour = now_time.hour
 
 
-        if hour==18:
+        if hour==20:
             print("auto_report")
             #create report
-            for market in ["CN", "HK"]:
+            for market in ["CN"]:
                 create_daily_report(update_DB=True, market=market, send_report=True)
 
             #note it in the update.csv
@@ -365,7 +397,8 @@ def loop():
             df.at[index,"day"]=day
             df.at[index,"hour"]=hour
             df = df[["year", "month", "day", "hour", "minute"]]
-            df.to_csv(path)
+
+
             time.sleep(onehour)
 
 
@@ -390,7 +423,7 @@ if __name__ == '__main__':
 
         # single report
         if do==1:
-            for market in ["CN","HK"]:
+            for market in ["CN"]:
                 create_daily_report(update_DB=True,market=market,send_report=True)
 
 

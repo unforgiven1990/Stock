@@ -116,4 +116,177 @@ def after_big_down():
 
 
 
-after_big_down()
+def volatility():
+    import random
+    import Alpha
+    #this test simulates stock volatility and random sample simulates user buy and sell point
+
+    """
+    Result:
+    波动越小越好，股票涨幅约向上越好
+    平衡这两种，就是最好的投资
+    """
+    repeat=1
+    df_master=pd.DataFrame()
+    for j in range(repeat):
+        print("repeat", j)
+
+
+        while True:
+            df = pd.DataFrame()
+            df["pct_chg"] = 0
+            n = 500
+            a_gain = [-10, -10, -7, -5, -3, -2, -1, -0.5, 0, 0.5, 1, 2, 3, 5, 7, 10, 10]
+            a_gain = [-1, -0.5, 0, 0.5, 1]
+
+            for i in range(n):
+                pct_chg = random.choice(a_gain)
+                df.at[i,"pct_chg"]=pct_chg
+
+            df["close"]=Alpha.comp_chg(df=df,abase="pct_chg",inplace=False)
+            if df["close"].iat[-1]>1.03 and df["close"].iat[-1]<1.06:
+                break
+
+        print("out")
+
+        traden=10000
+        holdp=20
+        benjin=100
+        df_trade=pd.DataFrame()
+        for trade in range(traden):
+            buy = random.choice([x for x in range(n)])
+            sell = buy+holdp
+            if sell>n-1:
+                sell=n-1
+
+            buyat=df.at[buy,"close"]
+            sellat=df.at[sell,"close"]
+            gain= sellat/buyat
+            df_trade.at[trade,"buyat"]=buyat
+            df_trade.at[trade,"sellat"]=sellat
+            df_trade.at[trade,"return"]=gain
+            df_trade.at[trade,"benjin"]=benjin=gain*benjin
+
+
+        lastday=df['close'].iat[-1]
+        print(f"the last day close is {lastday}")
+        print(f"benjin is {benjin}")
+        print()
+        df_master.at[j,"lastday"]=lastday
+        df_master.at[j,"benjin"]=benjin
+
+        df_trade.to_csv(f"df_trade{j}.csv")
+    df_master.to_csv("df_master.csv")
+
+def qdii_count():
+    """
+    tries to see if the number of qdii research can predict the market hotness
+    result: The effect is very minimal. Maybe qdii has to publish research on a given period. The results are published periodic
+    :return:
+    """
+    df_trade_date=DB.get_trade_cal_D()
+    df_trade_date["qdii_research"] = 0
+    df_trade_date["qdii_grade"] = 0
+
+    df_ts_code=DB.get_ts_code()
+
+    for ts_code in df_ts_code.index:
+        print(ts_code)
+        for freq in ["qdii_research","qdii_grade"]:
+            df_qdii=DB.get_asset(ts_code=ts_code,freq=freq)
+            if df_qdii.empty:
+                continue
+            df_qdii=df_qdii.groupby("trade_date").count()
+            df_qdii[freq]=1
+
+
+            df_trade_date[freq] = df_trade_date[freq].add(df_qdii[freq],fill_value=0)
+
+    df_sh=DB.get_asset(ts_code="000001.SH",asset="I")
+    df_trade_date["sh"]=df_sh["close"]
+    df_trade_date.to_csv("qdii_count_result.csv")
+
+def technical_search():
+    """
+    tries to find stock on a given pattern, resistance, support and such
+
+
+    :return:
+    """
+    df_ts_code=DB.get_ts_code()
+
+    for ts_code in df_ts_code.index:
+        df_asset=DB.get_asset(ts_code=ts_code,freq="D")
+
+
+def qdii_ownage_ratio():
+    """
+    this function tries to see how much money institution has from all market capital
+    :return:
+    """
+
+    df_market_cap=DB.get_trade_date()
+    df_market_cap["E_cap"]=0
+    df_market_cap["FD_cap"]=0
+
+    #calculate total market cap
+    df_ts_code=DB.get_ts_code()
+    for ts_code in df_ts_code.index:
+        print(ts_code)
+        df_asset=DB.get_asset(ts_code=ts_code)
+        if df_asset.empty:
+            continue
+        df_market_cap["E_cap"] = df_market_cap["E_cap"].add(df_asset["total_mv"],fill_value=0)
+
+    # calculate how much money fund owns
+    df_ts_code = DB.get_ts_code(a_asset=["FD"])
+    df_ts_code=df_ts_code[df_ts_code["fund_type"].isin(["股票型","混合型"])]
+    for ts_code in df_ts_code.index:
+        print(ts_code)
+        df_asset = DB.get_asset(ts_code=ts_code,asset="FD")
+        if df_asset.empty:
+            continue
+        df_market_cap["FD_cap"] = df_market_cap["FD_cap"].add(df_asset["total_mv"], fill_value=0)
+
+    df_market_cap["ratio"]=df_market_cap["FD_cap"] /df_market_cap["E_cap"]
+    df_market_cap.to_csv("total market cap.csv")
+
+def best_xinquan():
+
+    """This function tests a strategy to produce the best outcome from all xinquan
+    Result:风格切换相对比较慢，兴全模式如果好的话可以好100天，200天，差的话也可以差那么久
+    买20天强势的好的，短期内买多涨的
+    买240天趋势走的差的，长期内买少涨的
+    """
+
+
+    a_core=["163415.SZ","163402.SZ","163417.SZ","163412.SZ"]
+    a_big=a_core+[]
+    df_result=pd.DataFrame()
+
+    """Strategy 1 buy the stock with 20 day best/worst gain"""
+    for past in [60]:
+        for ts_code in a_core:
+            df_asset=DB.get_asset(ts_code=ts_code, asset="FD")
+            df_result[f"{ts_code}_close"]=df_asset["close"]
+            df_result[f"{ts_code}_pgain{past}"]=df_asset[f"pgain{past}"]
+
+    """strategy excecute"""
+    for ts_code in a_core:
+        df_result[f"rank_{ts_code}"]=df_result[[f"{a}_pgain60" for a in a_core]].rank(axis=1)[f"{ts_code}_pgain60"]
+
+    print("what")
+    df_result.to_csv("what.csv")
+
+
+
+
+    return
+
+def qdii_size_return_relation():
+    """do big sized fund perform better in the future?
+
+
+    """
+
+best_xinquan()

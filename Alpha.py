@@ -500,6 +500,10 @@ def rsi(df, abase, freq, inplace, name, cols):
     return alpha_return(locals())
 
 
+
+
+
+
 @alpha_wrap
 def boll(df, abase, freq1,freq2, inplace, name, cols):
     try:
@@ -1947,7 +1951,7 @@ def fol(df, abase, inplace, name, cols, func, kwargs, iteration_list):
 
 
 @alpha_wrap
-def macd(df, abase, freq, freq2, inplace, name, cols, type=1, score=10):
+def macd(df, abase, freq, freq2, inplace, name, cols, type=4, score=10):
     """ using ehlers zero lag EMA used as MACD cross over signal instead of conventional EMA
         on daily chart, useable freqs are 12*60, 24*60 ,5*60
 

@@ -434,12 +434,14 @@ def main():
     #A; But maybe the combination of low volatiliy can become causation.
     #A: Maybe 3 coins together can describe the dice (IF there is a relation anywhere)
 
+
     #Q: What are internal and external factors?
     #A: Internal factors are signals from the stockmarket: volume, price gain, rsi, ma ...
     #A: External factors are signals outside the stockmarket: oilprice, gold price, macro economy, pmi,
     #A: IN FUCKING THEORY, external factors should lead stockmarket. BUT in REALITY, stock market leads the economy.
     #A: Using external factors to predict stockmarket usually is more unreliable and has more delay than just looking at the price itself.
     #A: But some external factors can be used like fundamentals(which is not an external factor in real)
+
 
     #Q: Is there a time when volatility is low and bull market?
     #A: NO, this does not exist in A Stock. IN CN market, if there is bull market, volatiliy MUST be high

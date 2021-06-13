@@ -1473,7 +1473,7 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
     extrem_pct=0.06
     a_freq=[20,60,240]
     a_freqd = []
-    a_freq_s=["D", "M", "S"] #this is better than D,W,M,S because year is important, it guarantees stock with high long term trend to be higher
+    a_freq_s=["D", "W", "M"] #this is better than D,W,M,S because year is important, it guarantees stock with high long term trend to be higher
     df_trade_date=DB.get_trade_date()
     #get the last n days of trade date from end_date
     df_trade_date=df_trade_date[(df_trade_date.index > start_date)&(df_trade_date.index <= end_date)]
@@ -1553,6 +1553,23 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
             # RANK Geomean: implcitly reward stock with high monotony and punish stock with high volatilty.
             for freq, df_asset_freq in d_asset_freq.items():
                 df_result.at[ts_code, f"{freq}_geomean"] = gmean(df_asset_freq["pct_change"].dropna())
+
+            # Boll upper abd lower band distance, the smaller, the cycle mode, the bigger the trend mode
+            for freq, df_asset_freq in d_asset_freq.items():
+                try:
+                    boll, bolldown, bollup = Alpha.boll(df=df_asset_freq, abase="close", freq1=20, freq2=2, inplace=True)
+                    df_asset_freq["boll_dist_all"]=df_asset_freq[bollup]/df_asset_freq[bolldown]
+
+                    #general distance between up and low describes the risk of a stock
+                    df_result.at[ts_code, f"{freq}_boll_dist_all"] = temp= df_asset_freq["boll_dist_all"].mean()
+
+                    #last day avg dis/last day dis describes if the stock is currently in trend or cycle mode
+                    df_result.at[ts_code, f"{freq}_boll_dist_nowpt"] = df_asset_freq["boll_dist_all"].iat[-1]
+                    df_result.at[ts_code, f"{freq}_boll_dist_nowrel"] = df_asset_freq["boll_dist_all"].iat[-1]/temp
+
+                    #last day avg dist vs velocity/tiltness of the distance. If the distance is getting smaller or bigger
+                except:
+                    pass
 
             # RANK technical freqhigh = ability to create 20d,60d,120d,240high
             for freq in a_freq:
@@ -1634,18 +1651,21 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
 
     #add if they are the head of industry
     df_result_static =   DB.add_static_data(df_result, asset=a_asset, market=market)
-    for counter in [1,2,3]:
-        df_head = pd.DataFrame()
-        for industry in df_result_static[f"sw_industry{counter}"].unique():
-            if industry is None:
-                continue
-            df_filter = df_result_static[df_result_static[f"sw_industry{counter}"] == industry]
-            df_filter = df_filter.sort_values("total_mv", ascending=False)
-            df_head = df_head.append(df_filter.head(1))
+    try:
+        if market=="CN":
+            for counter in [1,2,3]:
+                df_head = pd.DataFrame()
+                for industry in df_result_static[f"sw_industry{counter}"].unique():
+                    if industry is None:
+                        continue
+                    df_filter = df_result_static[df_result_static[f"sw_industry{counter}"] == industry]
+                    df_filter = df_filter.sort_values("total_mv", ascending=False)
+                    df_head = df_head.append(df_filter.head(1))
 
-        df_result[f"head_sw_industry{counter}"]=0
-        df_result.loc[df_head.index,f"head_sw_industry{counter}"]=1
-
+                df_result[f"head_sw_industry{counter}"]=0
+                df_result.loc[df_head.index,f"head_sw_industry{counter}"]=1
+    except:
+        pass
 
     #add qdii hold after looping individual stocks
     try:
@@ -2303,6 +2323,132 @@ def stop_rule():
     pass
 
 
+
+def short_vs_long_stg():
+    """
+    premise:
+    - Dimension 1: trend = There are 3 types of stock, one only goes up, one only goes down, one goes in cycle mode sometimes up, sometimes down
+    - for the first stock, you should only buy and never sell, for second you should never buy, for third one you should sometimes buy, and sometimes sell.
+    - So predicting the stock is more important than your overall strategy.
+
+    - Dimension 2: volatility = Even if a stock goes up all the time, but if it goes up too slowly, then it is still not better than a stock in cycle mode.
+    - so the final scope of a stock = General trend(up, cycle, down) and abs. volatility.
+
+    - Ideal stock = stock that always goes up and has infinite volatility.
+
+    - following the historic value of a stock, we create the strategy.
+    - Problem: It is a very long term strategy.
+    - Idea: is there a short term strategy that is better than long?
+
+    :return:
+    """
+
+    df_result=pd.DataFrame()
+    onestock=True
+    for asset in ["FD"]:
+
+
+        for freq in ["D"]:
+            if onestock:
+                df_one = DB.get_asset(ts_code="163402.SZ", asset="FD")
+                if freq!="D":
+                    df=LB.df_to_freq(df_one,freq)
+                    df[f"boll_up"], egal, df[f"boll_low"] = talib.BBANDS(df["close"], 20, 2, 2)
+                    df[f"boll"] = (((1 - 0) * (df["close"] - df[f"boll_low"])) / (df[f"boll_up"] - df[f"boll_low"])) + 0
+                    d_preload = {"163402.SZ": df}
+                else:
+                    d_preload = {"163402.SZ": df_one}
+            else:
+                d_preload = DB.preload(asset=asset,step=1)
+
+            """
+            for each stock, simulate using Expanding
+            -define the stocks past trend
+            -define the stocks past volatility
+            -use boll
+            """
+
+            for ts_code, df_asset in d_preload.items():
+                print("start", ts_code)
+
+                if "OF" in ts_code:
+                    continue
+
+                if df_asset.empty:
+                    continue
+
+
+
+                "chg pct_chg into 1.1 form instead of 10% form"
+                df_asset["pct_chg"]=1+(df_asset["pct_chg"]/100)
+
+                """go through each day and simulate which day would be bought and sold"""
+
+                """calculate the portfolio by using comp_gain"""
+                try:
+
+                    # df_port["comp_chg"]=Alpha.comp_chg2(df=df_port,inplace=False,abase="pct_chg")
+                    df_asset["nat_comp_chg"] = Alpha.comp_chg2(df=df_asset, inplace=False, abase="pct_chg")
+
+                    """compare result"""
+                    df_result.at[ts_code, "nat_comp_chg"] = df_asset["nat_comp_chg"].iat[-1]
+
+                except Exception as e:
+                    print("error", e)
+                    continue
+
+                #boll
+                if False:
+                    for lower, upper in [(0.1,0.9)]:
+
+                        df_asset[f"port{lower,upper}"]=np.nan
+                        trend="up"
+                        for trade_date in df_asset.index:
+
+                            pct_chg=df_asset.at[trade_date, "pct_chg"]
+
+                            if df_asset.at[trade_date,"boll"]>upper and trend=="up":
+                                df_asset.at[trade_date, f"port{lower,upper}"]=1
+                                trend="down"
+                            elif df_asset.at[trade_date, "boll"] < lower and trend=="down":
+                                df_asset.at[trade_date, f"port{lower,upper}"] = pct_chg
+                                trend = "up"
+                            else:
+                                if trend== "up":
+                                    df_asset.at[trade_date, f"port{lower,upper}"] = pct_chg
+                                elif trend=="down":
+                                    df_asset.at[trade_date, f"port{lower,upper}"] = 1
+
+                            df_asset[f"stg_comp_chg{lower,upper}"] = Alpha.comp_chg2(df=df_asset, inplace=False, abase=f"port{lower,upper}")
+
+                            df_result.at[ts_code, f"stg_comp_chg{lower,upper}"] = df_asset[f"stg_comp_chg{lower,upper}"].iat[-1]
+                df_result.at[ts_code, f"period"] = len(df_asset)
+                df_result.at[ts_code, f"start close"] = df_asset["close"].iat[0]
+                #macd
+                for freq1, freq2 in [(20,60),(20,120),(20,240),(60,240)]:
+                #for freq1, freq2 in [(10,20),(10,60),(20,60),(20,120),(60,120),(20,240),(60,240),(120,240)]:
+                    macdlabel=Alpha.macd(df=df_asset,abase="close",freq=freq1,freq2=freq2 ,inplace=True)
+
+                    for counter,label in enumerate(macdlabel):
+                        if counter !=0:
+                            del df_asset[label]
+
+                    for trade_date in df_asset.index:
+                        if df_asset.at[trade_date,macdlabel[0]]==10:
+                            df_asset.at[trade_date, f"macd_port{freq1,freq2}"] = df_asset.at[trade_date, "pct_chg"]
+                        else:
+                            df_asset.at[trade_date, f"macd_port{freq1,freq2}"] = 1
+                    df_asset[f"macd_comp{freq1,freq2}"] = Alpha.comp_chg2(df=df_asset, inplace=False, abase=f"macd_port{freq1,freq2}")
+                    df_result.at[ts_code, f"macd_comp{freq1,freq2}"] = df_asset[f"macd_comp{freq1,freq2}"].iat[-1]
+
+                    df_asset.to_csv(f"temp/{ts_code}.csv")
+
+            if not onestock:
+                df_result.to_csv(f"test_{freq}2.csv")
+            else:
+                df_asset.to_csv(f"onestock{ts_code}.csv")
+
+
 def asset_bullishness2():
     """this bullishness tries to find the stock by comparing their return each defined period.
     1. For each period, we rank the stocks
@@ -2365,6 +2511,76 @@ def asset_bullishness2():
             LB.to_csv_feather(df=df_summary, a_path=LB.a_path(f"Market/CN/ATest/bullishness2/df_summary_{asset}_{freq}"),skip_feather=True)
 
 
+def random_dist():
+    import random
+    """
+    Is long time holding periods return proportinoally better than random holding period on:
+    rising stock
+    cyclic stock
+    falling stock
+
+    
+    
+    result:
+    the longer holding period, the more certain the daily return
+    the less holding period, the more volatile, the more gamble
+    the holding period return is the same for all periods 
+    so the only difference is certainty
+
+
+    :return:
+    """
+    df_final_result=pd.DataFrame()
+    asset="I"
+    df_ts_code=DB.get_ts_code(a_asset=[asset])
+    #sample_ts_code=random.sample(range(1, len(df_ts_code)),3000)
+    sample_ts_code=["399006.SZ"]
+    for n in sample_ts_code:
+        #ts_code=df_ts_code.index[n]
+        ts_code="399006.SZ"
+        df_asset= DB.get_asset(ts_code=ts_code,asset=asset)
+
+        if False:
+            df_asset["close"]=1.01**df_asset["period"]
+            df_asset["sinus"]=df_asset["period"].apply(lambda x: math.sin(x) )
+            df_asset["close"] =df_asset["close"]+df_asset["sinus"]*10
+
+
+        df_result=pd.DataFrame()
+        for trade in range(100000):
+
+            sample_output = random.sample(range(1,len(df_asset)), 2)
+            start_trade=builtins.min(sample_output)
+            end_trade=builtins.max(sample_output)
+
+            start_trade_date=df_asset.index[start_trade]
+            end_trade_date=df_asset.index[end_trade]
+
+            start_price=df_asset["close"].iat[start_trade]
+            end_price=df_asset["close"].iat[end_trade]
+            period_return=end_price/start_price
+            period=end_trade-start_trade
+            averager_ari=(period_return-1)/period
+            averager_log=period_return**(1/period)
+            print(trade,ts_code,start_trade,end_trade,period,period_return)
+
+            df_result.at[trade,"start_trade_date"]=start_trade_date
+            df_result.at[trade,"end_trade_date"]=end_trade_date
+            df_result.at[trade,"start_price"]=start_price
+            df_result.at[trade,"end_price"]=end_price
+            df_result.at[trade,"period"]=period
+            df_result.at[trade,"period_return"]=period_return
+            df_result.at[trade,"averager_log"]=averager_log
+            df_result.at[trade,"averager_ari"]=averager_ari
+
+        for lower, upper in LB.custom_pairwise_overlap([5,10,20,60,250,500,1000,2000,4000,8000]):
+            print(lower,upper)
+            df_filter=df_result[df_result["period"].between(lower,upper)]
+            df_final_result.at[ts_code,f"averager_log{lower,upper}"]=df_filter["averager_log"].mean()
+            #df_final_result.at[ts_code,f"averager_ari{lower,upper}"]=df_filter["averager_ari"].mean()
+
+        df_result.to_csv(f'result{ts_code}.csv')
+        df_final_result.to_csv(f'final{asset}.csv')
 
 
 if __name__ == '__main__':
@@ -2372,9 +2588,22 @@ if __name__ == '__main__':
     pr.enable()
 
 
+    if False:
+        df=pd.read_csv("result600519.SH.csv")
+        df_res=pd.DataFrame()
+        for period in range(1,5000):
+            print(period)
+            df_filter=df[df["period"] == period]
+            df_res.at[period,"mean"]=df_filter["averager"].mean()
+        df_res.to_csv("distri.csv")
+
     #asset_bullishness2()
     #asset_bollinger()
+    #short_vs_long_stg()
+    short_vs_long_stg()
+    #asset_bullishness(start_date=20180401, end_date=LB.latest_trade_date(), market="CN", step=1, a_asset=["FD"])
 
-    asset_fund_portfolio()
+
+
 
 

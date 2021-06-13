@@ -36,6 +36,20 @@ def tushare_limit_breaker(func, kwargs, limit=1000):
         df_last = df_this
     return df
 
+def tushare_limit_breaker2(func, kwargs, limit=1000):
+    """for some reason tushare only allows fund，forex to be given at max 1000 entries per request"""
+    df = func(**kwargs)
+    len_df_this = len(df)
+    df_last = df
+    while len_df_this == limit:
+        kwargs["end_date"] = df_last.at[len(df_last) - 1, "trade_date"]
+        df_this = func(**kwargs)
+        if (df_this.equals(df_last)):
+            break
+        df = df.append(df_this, sort=False, ignore_index=True)
+        len_df_this = len(df_this)
+        df_last = df_this
+    return df
 
 def update_trade_cal(start_date="19900101", end_date="30250101", market="CN"):
     if market == "CN":
@@ -442,10 +456,14 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
         if ".OF" in str(ts_code):
             # 场外基金
             df = tushare_limit_breaker(func=_API_Tushare.my_fund_nav, kwargs={"ts_code": ts_code}, limit=1000)
-            LB.df_reverse_reindex(df)
+            #LB.df_reverse_reindex(df) wrong, should be removed if everything runs smoothly
 
             if df.empty:
                 return pd.DataFrame()
+
+            df["net_asset"] = df["net_asset"].fillna(method="ffill")
+
+
 
             df_helper = pd.DataFrame()
             df_helper["trade_date"]=df["end_date"]
@@ -453,8 +471,10 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             for ohlc in ["open", "high", "low", "close"]:
                 try:
                     df_helper[ohlc] = df["accum_nav"].astype(float)
+                    df_helper["total_mv"] = df["net_asset"].astype(float)
                 except:
                     df_helper[ohlc] = 1
+                    df_helper["total_mv"] = np.nan
 
             try:
                 df_helper["pct_chg"] = df_helper["open"].pct_change()
@@ -464,6 +484,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             #VERY IMPORTANT. otherwise normal FD and .OF will have inconsistent columns
             df_helper["vol"]=np.nan
             df = df_helper
+
 
             return LB.df_reverse_reindex(df)
 
@@ -498,9 +519,25 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                         # df[f"{column}_后复权"]=df[column] * df["adj_factor"]
                         df[column] = df[column] * df["adj_factor"] / latest_adj
 
-                df = LB.df_reverse_reindex(df)
+
+
+                #add total mv
+                #using a trick
+                df_total_mv = tushare_limit_breaker(func=_API_Tushare.my_fund_nav, kwargs={"ts_code": ts_code}, limit=1000)
+                df_total_mv.index=df_total_mv["end_date"].astype(str)
+                df_total_mv["net_asset"]=df_total_mv["net_asset"].fillna(method="bfill") #fill because the df is not reversed yet
+
+                # remove duplicate here inefficiently
+                df_total_mv = df_total_mv.loc[~df_total_mv.index.duplicated(keep="first")]
+
+                if not df_total_mv.empty:
+                    df["total_mv"] = df_total_mv["net_asset"].astype(float)
+                else:
+                    df["total_mv"] = np.nan
+
+
                 LB.df_columns_remove(df, ["pre_close", "amount", "change", "adj_factor"])
-            return df
+            return LB.df_reverse_reindex(df)
 
     # add technical indicators. but us stock still might use it .maybe change later
     def update_asset_point(df, asset):
@@ -874,6 +911,7 @@ def update_asset_G(asset=["E"], night_shift=True, step=1):
 
 
     # loop over all stocks
+
     for group, a_instance in LB.c_d_groups(assets=["E"]).items():
         for instance in a_instance:
 
@@ -1038,6 +1076,20 @@ def update_asset_G2(asset=["E"], night_shift=True, step=1):
         print(key, "UPDATED")
 
 
+def update_index_weight(ts_code,market="CN"):
+    df = tushare_limit_breaker2(_API_Tushare.my_index_weight, {"index_code": ts_code, "end_date": 99999999}, limit=5000)
+    a_path=LB.a_path(f"Market/{market}/Asset/I/index_weight/{ts_code}")
+    LB.to_csv_feather(df=df,a_path=a_path)
+
+def update_important_index_weight(market="CN"):
+    d_dict=LB.c_imp_index()
+    for asset,array in d_dict.items():
+        if asset=="I":
+            for ts_code in array:
+                update_index_weight(ts_code, market=market)
+
+
+
 def update_asset_stock_market_all(start_date="00000000", end_date=LB.today(), asset=["E"], freq="D", market="CN", comparison_index=["000001.SH", "399001.SZ", "399006.SZ"], night_shift=False):
     """ In theory this should be exactly same as Asset_E
     """  # TODO make this same as asset_E
@@ -1158,7 +1210,7 @@ def update_hk_hsgt():
             pass
 
     df_result=df_result.loc[df_result.index.drop_duplicates()]
-    LB.to_csv_feather(df=df_result,a_path=a_path,skip_feather=True)
+    LB.to_csv_feather(df=df_result,a_path=a_path,skip_feather=False)
     return df_result
 
 def update_asset_xueqiu(asset="E", market="CN"):
@@ -1767,6 +1819,7 @@ def update_all_in_one_cn(night_shift=False, until=999):
     for asset in ["I","E","FD"]:
         LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=8)  # 40 mins
     update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
+    update_important_index_weight()
 
     # 2.3 OTHERS
     update_asset_qdii()
@@ -1813,12 +1866,7 @@ if __name__ == '__main__':
     pr = cProfile.Profile()
     pr.enable()
     try:
-        night_shift = True
-        #"E",  hk hold q权限那么小，每分钟才2次
-        for asset in ["FD"]:  # currently only hk hold and qdii hold
-            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
-                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
-
+        update_important_index_weight()
 
 
 

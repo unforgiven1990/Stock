@@ -279,8 +279,13 @@ def c_sfreq():
     return [2, 20, 240]
 
 
-
-
+def c_imp_index():
+    return {
+            "I": ["000001.SH","000300.SH", "000016.SH","399001.SZ", "399006.SZ", "399102.SZ","000903.SH","000852.SH","000117.SH","000118.SH","399704.SZ","399706.SZ","399653.SZ","000300.SH","000063.SH","000064.SH"],
+            "E": [],
+            "FD": ["513100.SH", "160133.SZ", "163415.SZ","163417.SZ", "163402.SZ","169101.SZ", "159928.SZ", "163412.SZ", "512010.SH","162415.SZ"],
+            "G": ["asset_E"],
+        }
 
 
 
@@ -289,6 +294,9 @@ def c_G_queries():
 
 def c_G_queries_small_groups():
     return {"G": ["on_asset == 'E'", "group in ['sw_industry1','sw_industry2', 'jq_industry1','jq_industry2','zj_industry1'] "]} #, 'jq_industry2','jq_industry2','zj_industry1'
+
+def c_G_queries_industrylv2():
+    return {"G": ["on_asset == 'E'", "group in ['sw_industry2'] "]}
 
 def c_groups():
     return ['sw_industry1','sw_industry2', 'jq_industry1','jq_industry2','zj_industry1']
@@ -1002,11 +1010,11 @@ def to_excel(path, d_df, index=True,color=True):
             handle_save_exception(e, path)
 
 
-def send_mail(trade_string="what to buy and sell"):
+def send_mail_to_me(trade_string="what to buy and sell"):
     sender_email = "sizhe.huang@guanyueinternational.com"
     receiver = "sizhe.huang@guanyueinternational.com"
     cc = "yang.qiong@guanyueinternational.com"
-    password = "Ba22101964!"
+    password = "Ba22101964!!"
     msg = EmailMessage()
     msg.set_content(trade_string)
     today = pd.datetime.now().date()
@@ -1023,6 +1031,8 @@ def send_mail(trade_string="what to buy and sell"):
     server.sendmail(sender_email, [receiver, cc], msg.as_string())
     server.close()
     print("successfuly send...")
+
+
 
 
 def mail_to_multipart(mail):
@@ -1046,42 +1056,54 @@ def mail_to_multipart(mail):
     mail_new.attach(mail)
     return mail_new
 
+def toBubble_trade_date(trade_string):
+    """bubbles uses stupid m/dd/yy format
+
+    """
+    return f"{int(trade_string[4:6])}/{trade_string[6:8]}/{trade_string[2:4]}"
+
 def send_mail_report(trade_string="what to buy and sell",files=["test.csv"],receiver = "sizhe.huang@guanyueinternational.com"):
-    sender_email = "sizhe.huang@guanyueinternational.com"
+    try:
+
+        sender_email = "sizhe.huang@guanyueinternational.com"
+
+        password = "Ba22101964!!"
+        msg = EmailMessage()
+        msg.set_content(trade_string)
+        #msg['Subject'] = toBubble_trade_date(trade_string)
+        msg['Subject'] = "wtf2"
+
+        msg['From'] = "cj@guanyueinternational.com"
+        msg['CC'] = "cj@guanyueinternational.com"
+        msg['To'] = "stock.uqhpqf@zapiermail.com"
+        #msg['To'] = "dailystockinfo.uqhpqf@zapiermail.com"
+        #msg['To'] = "workflow.uqhpqf@zapiermail.com"
+
+        for path in files:
+            part = MIMEBase('application', "octet-stream")
+            with open(path, 'rb') as file:
+                part.set_payload(file.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition',
+                            'attachment; filename="{}"'.format(Path(path).name))
+
+            #print(msg.is_multipart())
+            msg = mail_to_multipart(msg)
+            #print(msg.is_multipart())
+            msg.attach(part)
 
 
-    password = "inception0Ba22101964!"
-    msg = EmailMessage()
-    msg.set_content(trade_string)
-    msg['Subject'] = trade_string
-    msg['From'] = "sizhe.huang@guanyueinternational.com"
-    msg['To'] = receiver
+        server = smtplib.SMTP_SSL("hwsmtp.exmail.qq.com", port=465)
+        server.ehlo()
+        server.login(sender_email, password)
 
-    for path in files:
-        part = MIMEBase('application', "octet-stream")
-        with open(path, 'rb') as file:
-            part.set_payload(file.read())
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition',
-                        'attachment; filename="{}"'.format(Path(path).name))
-
-
-
-
-        #print(msg.is_multipart())
-        msg = mail_to_multipart(msg)
-        #print(msg.is_multipart())
-        msg.attach(part)
-
-
-    server = smtplib.SMTP_SSL("hwsmtp.exmail.qq.com", port=465)
-    server.ehlo()
-    server.login(sender_email, password)
-
-    print("login success...")
-    server.sendmail(sender_email, [receiver], msg.as_string())
-    server.close()
-    print("successfuly send...")
+        print("login success...")
+        server.sendmail(sender_email, [receiver], msg.as_string())
+        server.close()
+        print("successfuly send...")
+    except Exception as e:
+        print("error in sending mail!")
+        print(e)
 
 def trade_date_to_vieable(df):
     a=df.index
@@ -1325,6 +1347,10 @@ def test_boll():
             #df[f"boll"] = np.nan
 
     df.to_csv("test_boll.csv")
+
+
+
+
 
 
 if __name__ == '__main__':
