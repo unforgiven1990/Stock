@@ -115,9 +115,7 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
         Atest.asset_bullishness(a_asset=["E", "FD", "I"], step=1, market=market, end_date=trade_date)
     xls = pd.ExcelFile(f"Market/{market}/ATest/bullishness/bullishness_{market}_0_{trade_date}.xlsx")
     df_bullishness_overview_original = pd.read_excel(xls, sheet_name="Overview")
-
     a_real_cols = [x for x in a_ideal_cols if x in df_bullishness_overview_original.columns]
-
     df_bullishness_overview_master=df_bullishness_overview_original[a_real_cols]
     df_bullishness_overview_master.set_index("ts_code", drop=True, inplace=True)
 
@@ -154,10 +152,7 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
             df_bullishness_overview = df_bullishness_overview_master if asset!="Market" else df_bullishness_overview_master[["period" ]]
 
             # Select best stocks and by rank
-            """if asset =="Market":
-                df_selected_assets = df_bullishness_overview.loc[["000001.SH","399006.SZ","399001.SZ"]]
-                d_preload_filter = DB.preload(asset="I", d_queries_ts_code={"I": [f"ts_code in {df_selected_assets.index.to_list()}"]},query_df=f"trade_date <= {trade_date}")
-"""
+
             if asset in ["I","FD","E"]:
                 print("zes")
                 df_selected_assets = df_bullishness_overview[(df_bullishness_overview["asset"] == asset) & (df_bullishness_overview["period"] >= min_period) & (df_bullishness_overview["period"] < max_period)].sort_values(by="allround_rank_geo")
@@ -209,12 +204,15 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
             #after all individual assets are finished calculated
             # opportunity rank - short term rank - volatility
             if asset in ["E","FD","I"]:
-                df_selected_assets["opportunity_rank"] = df_selected_assets["close_20"] * 0.38 * 0.33 \
-                                                         + df_selected_assets["close_60"] * 0.38 * 0.33 \
-                                                         + df_selected_assets["close_240"] * 0.38 * 0.33 \
-                                                         + df_selected_assets["boll_NOWD"] * 0.62 * 0.38 \
-                                                         + df_selected_assets["boll_NOWW"] * 0.62 * 0.62
-                df_selected_assets["opportunity_rank"] = df_selected_assets["opportunity_rank"].rank(ascending=True)
+                try:
+                    df_selected_assets["opportunity_rank"] = df_selected_assets["close_20"] * 0.38 * 0.33 \
+                                                             + df_selected_assets["close_60"] * 0.38 * 0.33 \
+                                                             + df_selected_assets["close_240"] * 0.38 * 0.33 \
+                                                             + df_selected_assets["boll_NOWD"] * 0.62 * 0.38 \
+                                                             + df_selected_assets["boll_NOWW"] * 0.62 * 0.62
+                    df_selected_assets["opportunity_rank"] = df_selected_assets["opportunity_rank"].rank(ascending=True)
+                except:
+                    pass
 
             # investment rank - long term rank - value
             if asset in ["E"] and market in ["CN"]:

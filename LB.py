@@ -8,10 +8,12 @@ import talib
 import xlsxwriter
 import threading
 import smtplib
+import matplotlib.pyplot as plt
 from pathlib import Path
 from email.message import EmailMessage
 import math
 import re
+from scipy.signal import argrelextrema
 import os
 import itertools
 from win32com.client import Dispatch
@@ -772,7 +774,8 @@ def df_empty(query):
                      "roic", "roe_yearly", "roa2_yearly", "debt_to_assets", "assets_to_eqt", "dp_assets_to_eqt", "ca_to_assets", "nca_to_assets", "tbassets_to_totalassets", "int_to_talcap", "eqt_to_talcapital", "currentdebt_to_debt", "longdeb_to_debt", "ocf_to_shortdebt", "debt_to_eqt",
                      "eqt_to_debt", "eqt_to_interestdebt", "tangibleasset_to_debt", "tangasset_to_intdebt", "tangibleasset_to_netdebt", "ocf_to_debt", "turn_days", "roa_yearly", "roa_dp", "fixed_assets", "profit_to_op", "q_saleexp_to_gr", "q_gc_to_gr", "q_roe", "q_dt_roe", "q_npta",
                      "q_ocf_to_sales", "basic_eps_yoy", "dt_eps_yoy", "cfps_yoy", "op_yoy", "ebt_yoy", "netprofit_yoy", "dt_netprofit_yoy", "ocf_yoy", "roe_yoy", "bps_yoy", "assets_yoy", "eqt_yoy", "tr_yoy", "or_yoy", "q_sales_yoy", "q_op_qoq", "equity_yoy"])
-
+    else:
+        return pd.DataFrame()
 
 
 def set_index(df,set_index):
@@ -939,7 +942,7 @@ def a_path(path: str = ""): # csv = 0. feather = 1
 
 
 def handle_save_exception(e, path):
-    if type(e) in [UnicodeDecodeError, FileNotFoundError]:  # xlsxwriter.exceptions.CreatefileError
+    if type(e) in [UnicodeDecodeError, FileNotFoundError] or isinstance(e,xlsxwriter.exceptions.FileCreateError):  # xlsxwriter.exceptions.CreatefileError
         folder = "/".join(path.rsplit("/")[:-1])
         if not os.path.exists(folder):
             os.makedirs(folder)
@@ -989,7 +992,7 @@ def to_csv_feather(df, a_path, index_relevant=True, skip_feather=False, skip_csv
 
 
 def to_excel(path, d_df, index=True,color=True):
-    a_columns=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]+["A"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]
+    a_columns=[chr(i).title() for i in range(ord('b'), ord('z') + 1)]+["A"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]+["B"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]+["C"+chr(i).title() for i in range(ord('a'), ord('z') + 1)]
     for i in range(0, 10):
         try:
             writer = pd.ExcelWriter(path, engine="xlsxwriter")
@@ -1032,6 +1035,59 @@ def send_mail_to_me(trade_string="what to buy and sell"):
     server.close()
     print("successfuly send...")
 
+
+def biggest_drawback(df_asset,n = 30,drawback=True):
+    # n= number of points to be checked before and after
+    df = pd.DataFrame(df_asset["close"].tolist(), columns=['data'])
+
+    # Find local peaks
+    df['min'] = df.iloc[argrelextrema(df.data.values, np.less_equal,order=n)[0]]['data']
+    df['max'] = df.iloc[argrelextrema(df.data.values, np.greater_equal,order=n)[0]]['data']
+    df_minnotna = df[df['min'].notna()]
+    df_maxnotna = df[df['max'].notna()]
+
+    if drawback:
+        biggest_drawback=2
+        biggest_drawback_index=0
+        for index,maximum in zip(df_maxnotna.index,df_maxnotna["max"]):
+            try:
+                df_minnotna_helper=df_minnotna[df_minnotna.index > index]
+                pairedmin=df_minnotna_helper["min"].iat[0]
+                diff=pairedmin/maximum
+                if diff < biggest_drawback:
+                    biggest_drawback=diff
+                    biggest_drawback_index=index
+            except:
+                pass
+
+
+        if biggest_drawback < 1:
+            return biggest_drawback
+        else:
+            return np.nan
+    else:
+        biggest_pushforward = 1
+        for index, minimum in zip(df_minnotna.index, df_minnotna["min"]):
+            try:
+                df_minnotna_helper = df_maxnotna[df_maxnotna.index > index]
+                pairedmax = df_minnotna_helper["max"].iat[0]
+                diff = pairedmax / minimum
+                if diff > biggest_pushforward:
+                    biggest_pushforward = diff
+            except:
+                pass
+        if biggest_pushforward > 1:
+            return biggest_pushforward
+        else:
+            return np.nan
+
+        """
+        plt.scatter(df.index, df['min'], c='r')
+        plt.scatter(df.index, df['max'], c='g')
+        plt.plot(df.index, df['data'])
+        plt.show()
+        
+        """
 
 
 

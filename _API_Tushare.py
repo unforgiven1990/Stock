@@ -60,6 +60,9 @@ def my_trade_cal(api_name="trade_cal", start_date="00000000", end_date="00000000
 def my_holder_trade(ts_code):  # IMPORTANT! holder_trade instead of holdertrade in my version!
     return get(func=pro.stk_holdertrade, fname="pro.stk_holdertrade", kwargs=locals(), df_fallback=LB.df_empty("holder_trade"))
 
+def my_holdernumber(ts_code,**kwargs):
+    return get(func=pro.stk_holdernumber, fname="pro.stk_holdernumber", kwargs=locals(), df_fallback=LB.df_empty("holder_number"))
+
 
 def my_pledge_stat(ts_code):
     return get(func=pro.pledge_stat, fname="pro.pledge_stat", kwargs=locals(), df_fallback=LB.df_empty("pledge_stat"))
@@ -204,19 +207,4 @@ if __name__ == '__main__':
     """
     import DB
     import LB
-    import Alpha
-    df=my_margin(start_date="20130101",end_date="20210321")
-    print(df)
-    df=LB.df_reverse_reindex(df)
-    df["ma60"]=df["rqye"].rolling(60).mean()
-    df["rqye_rolling"]=Alpha.fol_rolling_norm(df=df,abase="ma60",inplace=False)
-    df["rqye_rolling60"]=Alpha.rollingnorm(df=df,abase="ma60",inplace=False,freq=60)
-    df=df.set_index("trade_date",drop=True)
-    df.index=df.index.astype(int)
 
-    df_sh=DB.get_asset("000001.SH",asset="I")
-    df_cy=DB.get_asset("399006.SZ",asset="I")
-    df["sh"]=df_sh["close"]
-    df["cy"]=df_cy["close"]
-
-    df.to_csv("rzrq.csv")

@@ -1550,9 +1550,20 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
 
 
             """RANK are used for ranking"""
+
+
             # RANK Geomean: implcitly reward stock with high monotony and punish stock with high volatilty.
             for freq, df_asset_freq in d_asset_freq.items():
                 df_result.at[ts_code, f"{freq}_geomean"] = gmean(df_asset_freq["pct_change"].dropna())
+
+            #biggest drawback
+            df_result.at[ts_code, f"biggest_pushforward5"] = LB.biggest_drawback(df_asset=df_asset, n=5,drawback=False)
+            df_result.at[ts_code, f"biggest_pushforward20"] = LB.biggest_drawback(df_asset=df_asset, n=20,drawback=False)
+            df_result.at[ts_code, f"biggest_pushforward60"] = LB.biggest_drawback(df_asset=df_asset, n=60,drawback=False)
+
+            df_result.at[ts_code, f"biggest_drawback20"]=LB.biggest_drawback(df_asset=df_asset,n=20,drawback=True)
+            df_result.at[ts_code, f"biggest_drawback60"]=LB.biggest_drawback(df_asset=df_asset,n=60,drawback=True)
+
 
             # Boll upper abd lower band distance, the smaller, the cycle mode, the bigger the trend mode
             for freq, df_asset_freq in d_asset_freq.items():
@@ -1743,6 +1754,12 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
                                      * (len(df_result) - df_result["tech_def_rank"]) \
                                      * (len(df_result) - df_result["tech_def_rank"])
     df_result["allround_rank_geo"] = df_result["allround_rank_geo"].rank(ascending=False)
+    df_result["beta_rank"] = df_result["000001.SH_beta"]+df_result["399001.SZ_beta"]+df_result["399006.SZ_beta"]
+
+
+    df_result["link"] = df_result.index
+    df_result["link"] = df_result["link"].str.slice(0, 6)
+    df_result["link"] = f"https://fund.eastmoney.com/" + df_result["link"] + ".html"
 
 
     df_result.to_csv(f"Market/{market}/Atest/bullishness/bullishness_{market}_{start_date}_{end_date}_{a_asset}.csv", encoding='utf-8_sig')
@@ -2583,6 +2600,63 @@ def random_dist():
         df_final_result.to_csv(f'final{asset}.csv')
 
 
+def stockholdernumber():
+    import Alpha
+    import _API_Tushare
+
+
+    """this test tries to find out about the relation between stock holder number and stock price
+    
+    
+    The assumption is, the more holder it comes into the market, the higher the market will go
+    The more diverse one stock is, the less future it has because it is in hands of 散户
+    the focused stock holder number a stock is, the more future it has because institutions like them
+    
+    """
+    do = 2
+
+    if do in [1]:
+        df = _API_Tushare.my_holdernumber(ts_code="300136.SZ")
+        df = LB.df_reverse_reindex(df)
+        df["pct_chg_number"] = df["holder_num"].pct_change()
+        df = df.set_index("end_date")
+        df["counter"] = 1
+        df.to_csv("test.csv")
+    else:
+        df_ts_code = DB.get_ts_code()
+        df_result = DB.get_trade_date()
+        df_result=df_result[df_result["lastdayofseason"]==True]
+        df_result=df_result[["lastdayofseason"]]
+        df_result["pct_chg_number"] = 0
+        df_result["counter"] = 0
+        df_result["holder_num"]=0
+        df_result.index.name = "end_date"
+        df_result.index = df_result.index.astype(int)
+
+        print(df_result.index)
+        for ts_code in df_ts_code.index[::1]:
+            try:
+                df = _API_Tushare.my_holdernumber(ts_code=ts_code)
+                df = LB.df_drop_duplicated_reindex(df, "end_date")
+                df = LB.df_reverse_reindex(df)
+                df["pct_chg_number"] = df["holder_num"].pct_change()
+                df = df.set_index("end_date")
+                df["counter"] = 1
+
+                df_result["holder_num"] = df_result["holder_num"].add(df["holder_num"], fill_value=0)
+                df_result["pct_chg_number"] = df_result["pct_chg_number"].add(df["pct_chg_number"], fill_value=0)
+                df_result["counter"] = df_result["counter"].add(df["counter"], fill_value=0)
+            except:
+                pass
+        df_result["final_pct_chg"] = df_result["pct_chg_number"] / df_result["counter"]
+        df_result["final_number"] = df_result["holder_num"] / df_result["counter"]
+        df_result.to_csv("rzrq.csv")
+
+
+def scrap_stockholder():
+    pass
+
+
 if __name__ == '__main__':
     pr = cProfile.Profile()
     pr.enable()
@@ -2600,7 +2674,7 @@ if __name__ == '__main__':
     #asset_bullishness2()
     #asset_bollinger()
     #short_vs_long_stg()
-    short_vs_long_stg()
+    asset_bullishness(a_asset=["FD"],step=1)
     #asset_bullishness(start_date=20180401, end_date=LB.latest_trade_date(), market="CN", step=1, a_asset=["FD"])
 
 

@@ -1576,7 +1576,7 @@ def get_ts_code(a_asset=["E"], market="CN", d_queries={}):
         if (asset == "FD") and market == "CN":
             df = df[df["delist_date"].isna()]
             # df = df[df["type"]=="契约型开放式"] #契约型开放式 and 契约型封闭式 都可以买 在线交易，封闭式不能随时赎回，但是可以在二级市场上专卖。 开放式更加资本化，发展的好可以扩大盘面，发展的不好可以随时赎回。所以开放式的盘面大小很重要。越大越稳重
-            df = df[(df["fund_type"]=="股票型")|(df["fund_type"]=="混合型")] #Only consider ETF and LOF because they can be publicly traded
+            # df = df[(df["fund_type"]=="股票型")|(df["fund_type"]=="混合型")]
 
         if d_queries:
             a_queries = d_queries[asset]
