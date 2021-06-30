@@ -78,6 +78,7 @@ def deco_except_empty_df(func):
     return this_function_will_never_be_seen
 
 
+
 def deco_wrap_line(func):
     def this_function_will_never_be_seen(*args, **kwargs):
         print("=" * 50)
@@ -86,6 +87,15 @@ def deco_wrap_line(func):
         return result
 
     return this_function_will_never_be_seen
+
+def deco_print_name(func):
+    def this_function_will_never_be_seen(*args, **kwargs):
+        print(f"Doing {func.__name__}")
+        result = func(*args, **kwargs)
+        return result
+
+    return this_function_will_never_be_seen
+
 
 def get_today_year():
     return pd.datetime.now().date().year

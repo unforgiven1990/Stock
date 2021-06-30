@@ -1556,6 +1556,7 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
             for freq, df_asset_freq in d_asset_freq.items():
                 df_result.at[ts_code, f"{freq}_geomean"] = gmean(df_asset_freq["pct_change"].dropna())
 
+
             #biggest drawback
             df_result.at[ts_code, f"biggest_pushforward5"] = LB.biggest_drawback(df_asset=df_asset, n=5,drawback=False)
             df_result.at[ts_code, f"biggest_pushforward20"] = LB.biggest_drawback(df_asset=df_asset, n=20,drawback=False)
@@ -1729,6 +1730,7 @@ def asset_bullishness(df_ts_code=pd.DataFrame(), start_date=00000000,end_date = 
         df_result["qdii_off_rank"] = df_result["qdii_off_rank"].rank(ascending=True)
     except:
         df_result["qdii_off_rank"] = np.nan
+
 
 
     """Technical Rank"""
@@ -2674,7 +2676,7 @@ if __name__ == '__main__':
     #asset_bullishness2()
     #asset_bollinger()
     #short_vs_long_stg()
-    asset_bullishness(a_asset=["FD"],step=1)
+    asset_bullishness(start_date=20180101,a_asset=["FD"],step=1)
     #asset_bullishness(start_date=20180401, end_date=LB.latest_trade_date(), market="CN", step=1, a_asset=["FD"])
 
 

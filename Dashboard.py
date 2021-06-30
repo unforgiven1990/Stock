@@ -86,7 +86,7 @@ def atom_rank(df_asset):
 
 
 
-def bullishness_by_freq(step=20):
+def bullishness_by_freq(step=1):
     """
     Excel Table row: ts_code
     Excel Table column: Season:
@@ -200,8 +200,10 @@ def create_dashboard():
     LB.to_excel(path=excel_path,d_df={"Dashboard":df_dashboard})
 
 
-df=DB.get_asset("001216.OF",asset="FD")
-drawback=LB.biggest_drawback(df_asset=df,drawback=False)
-print(drawback)
+def update_holder_number():
+    """update holder number for each stock because tushare holder number is inaccurate"""
+
+    pass
 
 
+bullishness_by_freq(step=1)

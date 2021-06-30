@@ -150,7 +150,7 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
         print(market,asset)
         for min_period, max_period in a_period[asset]:
             df_bullishness_overview = df_bullishness_overview_master if asset!="Market" else df_bullishness_overview_master[["period" ]]
-
+            print("df_bullishness_overview",df_bullishness_overview)
             # Select best stocks and by rank
 
             if asset in ["I","FD","E"]:
@@ -203,35 +203,39 @@ def create_daily_report(trade_date=-1, update_DB=False, market="CN", send_report
 
             #after all individual assets are finished calculated
             # opportunity rank - short term rank - volatility
+            print(df_selected_assets)
+            print(df_selected_assets.columns)
             if asset in ["E","FD","I"]:
-                try:
+
                     df_selected_assets["opportunity_rank"] = df_selected_assets["close_20"] * 0.38 * 0.33 \
                                                              + df_selected_assets["close_60"] * 0.38 * 0.33 \
                                                              + df_selected_assets["close_240"] * 0.38 * 0.33 \
                                                              + df_selected_assets["boll_NOWD"] * 0.62 * 0.38 \
                                                              + df_selected_assets["boll_NOWW"] * 0.62 * 0.62
                     df_selected_assets["opportunity_rank"] = df_selected_assets["opportunity_rank"].rank(ascending=True)
-                except:
-                    pass
+
 
             # investment rank - long term rank - value
             if asset in ["E"] and market in ["CN"]:
-                df_selected_assets["investment_rank"] = df_selected_assets["pe_ttm_ALL"] * 0.62 \
-                                                        + df_selected_assets["pb_ALL"] * 0.38
-                df_selected_assets["investment_rank"] = df_selected_assets["investment_rank"].rank(ascending=True)
+
+                    df_selected_assets["investment_rank"] = df_selected_assets["pe_ttm_ALL"] * 0.62 \
+                                                            + df_selected_assets["pb_ALL"] * 0.38
+                    df_selected_assets["investment_rank"] = df_selected_assets["investment_rank"].rank(ascending=True)
 
 
-                #buy sell rank
-                df_selected_assets["trade_rank"] =    df_selected_assets["qdii_off_rank"].rank(ascending=True)  * 0.8 *0.5*0.8\
-                                                    + df_selected_assets["qdii_def_rank"].rank(ascending=True)  * 0.8 *0.5*0.2\
-                                                    + df_selected_assets["tech_off_rank"].rank(ascending=True)  * 0.8 *0.4*0.3\
-                                                    + df_selected_assets["tech_def_rank"].rank(ascending=True)  * 0.8 *0.4*0.7\
-                                                    + df_selected_assets["hk_hold"].rank(ascending=False) *0.8*0.1*0.5 \
-                                                    + df_selected_assets["hk_hold_ALL"].rank(ascending=False) * 0.8*0.1*0.5 \
-                                                    + df_selected_assets["investment_rank"].rank(ascending=True)  * 0.20 *0.5 \
-                                                    + df_selected_assets["opportunity_rank"].rank(ascending=True)  * 0.20 *0.5
-                df_selected_assets["trade_rank"] = df_selected_assets["trade_rank"].rank(ascending=True)
-                df_selected_assets=df_selected_assets.sort_values("trade_rank")
+                    #buy sell rank
+                    df_selected_assets["trade_rank"] =    df_selected_assets["qdii_off_rank"].rank(ascending=True)  * 0.8 *0.5*0.8\
+                                                        + df_selected_assets["qdii_def_rank"].rank(ascending=True)  * 0.8 *0.5*0.2\
+                                                        + df_selected_assets["tech_off_rank"].rank(ascending=True)  * 0.8 *0.4*0.3\
+                                                        + df_selected_assets["tech_def_rank"].rank(ascending=True)  * 0.8 *0.4*0.7\
+                                                        + df_selected_assets["hk_hold"].rank(ascending=False) *0.8*0.1*0.5 \
+                                                        + df_selected_assets["hk_hold_ALL"].rank(ascending=False) * 0.8*0.1*0.5 \
+                                                        + df_selected_assets["investment_rank"].rank(ascending=True)  * 0.20 *0.5 \
+                                                        + df_selected_assets["opportunity_rank"].rank(ascending=True)  * 0.20 *0.5
+                    df_selected_assets["trade_rank"] = df_selected_assets["trade_rank"].rank(ascending=True)
+                    df_selected_assets=df_selected_assets.sort_values("trade_rank")
+
+
             #add static data
             if asset in ["E","FD","I"]:
                 df_selected_assets=df_selected_assets.loc[:, df_selected_assets.columns != 'asset']
@@ -422,7 +426,7 @@ if __name__ == '__main__':
         # single report
         if do==1:
             for market in ["CN"]:
-                create_daily_report(update_DB=True,market=market,send_report=True)
+                create_daily_report(update_DB=False,market=market,send_report=True)
 
 
         # summary of report

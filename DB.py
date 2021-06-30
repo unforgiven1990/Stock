@@ -844,11 +844,14 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                 #expanding pe_ttm %: only to check if G pe_ttm is correct, can be deleted later
                 if asset=="E":
                     try:
+                        df["e_pe_ttm_pct"] =df["pe_ttm"].rank(pct=True)
+                        """old
                         df["e_pe_ttm_pct_max"]=df["pe_ttm"].expanding(240).max()
                         df["e_pe_ttm_pct_min"]=df["pe_ttm"].expanding(240).min()
                         df["e_pe_ttm_pct"]= (((1 - 0) * ( df["pe_ttm"] - df["e_pe_ttm_pct_min"])) / (df["e_pe_ttm_pct_max"] - df["e_pe_ttm_pct_min"])) + 0
                         del df["e_pe_ttm_pct_max"]
                         del df["e_pe_ttm_pct_min"]
+                        """
                     except:
                         df["e_pe_ttm_pct"] = np.nan
 
