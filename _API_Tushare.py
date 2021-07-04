@@ -125,6 +125,9 @@ def my_fund_daily(ts_code, start_date="00000000", end_date="30000000"):
 def my_fund_nav(ts_code):
     return get(func=pro.fund_nav, fname="pro.fund_nav", kwargs=locals())
 
+def my_fund_share(ts_code):
+    return get(func=pro.fund_nav, fname="pro.fund_share", kwargs=locals())
+
 
 def my_fund_portfolio(ts_code=""):
     return get(func=pro.fund_portfolio, fname="pro.fund_portfolio", kwargs=locals())
@@ -201,10 +204,12 @@ def my_index_global(**kwargs):
     return get(func=pro.index_global, fname="pro.index_global", kwargs=locals())
 
 
+
 if __name__ == '__main__':
     """
     TODO kwargize all tushare_api functions to make htem more versatile
     """
     import DB
     import LB
+
 

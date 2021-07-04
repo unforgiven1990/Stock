@@ -63,7 +63,7 @@ def update_trade_cal(start_date="19900101", end_date="30250101", market="CN"):
 
 def update_trade_date(freq="D", market="CN", start_date="00000000", end_date=LB.today()):
     def update_trade_date_stockcount(df):
-        for asset in LB.c_asset():
+        for asset in ["I","E","FD"]:
             df_ts_codes = get_ts_code(a_asset=[asset])
             df_ts_codes = df_ts_codes.rename(columns={"list_date": "trade_date"})
             df_grouped = df_ts_codes[["name", "trade_date"]].groupby(by="trade_date").count()
@@ -455,15 +455,19 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
     def helper_FD(ts_code, freq, asset, start_date, end_date, adj=None, market="CN"):
         if ".OF" in str(ts_code):
             # 场外基金
-            df = tushare_limit_breaker(func=_API_Tushare.my_fund_nav, kwargs={"ts_code": ts_code}, limit=1000)
-            #LB.df_reverse_reindex(df) wrong, should be removed if everything runs smoothly
 
+            #get fund unit share price
+            df = tushare_limit_breaker(func=_API_Tushare.my_fund_nav, kwargs={"ts_code": ts_code}, limit=1000)
             if df.empty:
                 return pd.DataFrame()
+            df["accum_nav"] = df["accum_nav"].fillna(method="ffill")
 
-            df["net_asset"] = df["net_asset"].fillna(method="ffill")
-
-
+            #get fund share count
+            df_share = tushare_limit_breaker(func=_API_Tushare.my_fund_share, kwargs={"ts_code": ts_code}, limit=1000)
+            if "fd_share" in df_share:
+                df_share["total_share"] = df_share["fd_share"].fillna(method="ffill")
+            else:
+                df_share["total_share"] = np.nan
 
             df_helper = pd.DataFrame()
             df_helper["trade_date"]=df["end_date"]
@@ -471,9 +475,11 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
             for ohlc in ["open", "high", "low", "close"]:
                 try:
                     df_helper[ohlc] = df["accum_nav"].astype(float)
-                    df_helper["total_mv"] = df["net_asset"].astype(float)
+                    df_helper["total_share"] = df_share["total_share"].astype(float)
+                    df_helper["total_mv"] = df_helper["total_share"] * df_helper["open"]
                 except:
                     df_helper[ohlc] = 1
+                    df_helper["total_share"] = np.nan
                     df_helper["total_mv"] = np.nan
 
             try:
@@ -824,7 +830,7 @@ def update_asset_CNHK(asset="E", freq="D", market="CN", offset=0, step=1, night_
                     df[f"fgain{freqn}"]=Alpha.fgain(df=df, abase="close", freq=freqn, inplace=False)
 
                 # ma for infochart
-                for freqn in [5,  20, 60, 240]:
+                for freqn in [20, 60, 240,500]:
                     df[f"ma{freqn}"] = df["close"].rolling(freqn).mean()
 
                 # rsi for infochart
@@ -1161,6 +1167,14 @@ def update_asset_stock_market_all(start_date="00000000", end_date=LB.today(), as
     LB.to_csv_feather(df_result, a_path, index_relevant=False)
     print("Date_Base UPDATED")
 
+def update_repurchase():
+    df_trade_date = get_trade_cal_D()
+    df_trade_date=df_trade_date[df_trade_date.index>20100101]
+    for trade_date in df_trade_date.index:
+        print(trade_date," update repurchase")
+        df = _API_Tushare.my_repurchase(ann_date=trade_date)
+        a_path = LB.a_path(f"Market/CN/Date/E/repurchase/{trade_date}")
+        LB.to_csv_feather(df=df, a_path=a_path, skip_csv=True)
 
 
 def update_asset_bundle(bundle_name, bundle_func, market="CN", night_shift=True, a_asset=["E"], offset=0,step=1, skip_csv=True):
@@ -1527,6 +1541,8 @@ def get_trade_cal_D(start_date="00000000", end_date="30000000", a_is_open=[1], m
 
 
 def get_trade_date(start_date="000000", end_date=LB.today(), freq="D", market="CN"):
+    start_date=str(start_date)
+    end_date=str(end_date)
     df = get(LB.a_path(f"Market/{market}/General/trade_date_{freq}"), set_index="trade_date")
     # return df[(df.index >= int(start_date)) & (df.index <= int(end_date))]
     df= LB.df_between(df=df, start_date=start_date, end_date=end_date)
@@ -1776,7 +1792,7 @@ def update_all_in_one_hk(night_shift=False):
     LB.multi_process(func=update_asset_CNHK, a_kwargs={"market": "HK", "asset": "E", "freq": "D", "night_shift": False}, splitin=10)  # SMART
 
 
-def update_all_in_one_cn(night_shift=False, until=999):
+def update_all_in_one_cn(night_shift=True, until=999):
     # 0. ALWAYS UPDATE
     # 1. ONLY ON BIG UPDATE: OVERRIDES EVERY THING EVERY TIME
     # 2. ON BOTH BIG AND SMALL UPDATE: OVERRIDES EVERYTHING EVERY TIME
@@ -1795,7 +1811,7 @@ def update_all_in_one_cn(night_shift=False, until=999):
     for asset in ["E","FD"]: #currently only hk hold and qdii hold
         for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
             LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
-
+    update_repurchase()
 
     if until <= 1:
         return print(f"update_all_in_one_cn2 finished until {until}")
@@ -1820,7 +1836,7 @@ def update_all_in_one_cn(night_shift=False, until=999):
 
     # 2.2. ASSET
     for asset in ["I","E","FD"]:
-        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": False, "miniver":False}, splitin=8)  # 40 mins
+        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": night_shift, "miniver":False}, splitin=8)  # 40 mins
     update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
     update_important_index_weight()
 
@@ -1869,7 +1885,31 @@ if __name__ == '__main__':
     pr = cProfile.Profile()
     pr.enable()
     try:
-        update_important_index_weight()
+        #update_repurchase()
+
+        df_result=pd.DataFrame()
+        df_trade_date = get_trade_date()
+        df_trade_date = df_trade_date[df_trade_date.index > 20100101]
+        for trade_date in df_trade_date.index:
+            print(trade_date)
+            df_date=get_date(trade_date=trade_date,freq="repurchase")
+            if df_date.empty:
+                continue
+            df_result=df_result.append(df_date)
+
+        df_result.to_csv("date.csv",encoding="utf-8_sig")
+        df_group=df_result.groupby("ann_date").count()
+        df_group.index = df_group.index.astype(int)
+        df_group.index.name = "trade_date"
+        df_group["E_count"]=df_trade_date["E_count"]
+        df_group["proc"]=df_group["proc"]/df_group["E_count"]
+        df_group["count10"]=df_group["proc"].rolling(10).mean()
+
+
+
+        df_cy=get_asset(ts_code="399006.SZ",asset="I")
+        df_group["CY_close"]=df_cy["close"]
+        df_group.to_csv("df_group.csv", encoding="utf-8_sig")
 
 
 
