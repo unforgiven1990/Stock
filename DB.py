@@ -1810,7 +1810,7 @@ def update_all_in_one_cn(night_shift=True, until=999):
     # E: hk_hold only 2 min limit
     for asset in ["E","FD"]: #currently only hk hold and qdii hold
         for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
-            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": False, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
+            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": night_shift, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
     update_repurchase()
 
     if until <= 1:
@@ -1885,31 +1885,8 @@ if __name__ == '__main__':
     pr = cProfile.Profile()
     pr.enable()
     try:
-        #update_repurchase()
+        update_all_in_one_cn(until=999)
 
-        df_result=pd.DataFrame()
-        df_trade_date = get_trade_date()
-        df_trade_date = df_trade_date[df_trade_date.index > 20100101]
-        for trade_date in df_trade_date.index:
-            print(trade_date)
-            df_date=get_date(trade_date=trade_date,freq="repurchase")
-            if df_date.empty:
-                continue
-            df_result=df_result.append(df_date)
-
-        df_result.to_csv("date.csv",encoding="utf-8_sig")
-        df_group=df_result.groupby("ann_date").count()
-        df_group.index = df_group.index.astype(int)
-        df_group.index.name = "trade_date"
-        df_group["E_count"]=df_trade_date["E_count"]
-        df_group["proc"]=df_group["proc"]/df_group["E_count"]
-        df_group["count10"]=df_group["proc"].rolling(10).mean()
-
-
-
-        df_cy=get_asset(ts_code="399006.SZ",asset="I")
-        df_group["CY_close"]=df_cy["close"]
-        df_group.to_csv("df_group.csv", encoding="utf-8_sig")
 
 
 

@@ -128,6 +128,8 @@ def add_ts_close(df,ts_code,asset):
 
 @LB.deco_print_name
 def add_ts_copy(df, group, d_preload, name,col,a_clip=[]):
+
+
     d_preload={key:value for key,value in d_preload.items() if key in group}
 
     df[f"{col}_{name}"] =0
@@ -145,6 +147,8 @@ def add_ts_copy(df, group, d_preload, name,col,a_clip=[]):
         except:
             pass
     df[f"{col}_{name}"] = df[f"{col}_{name}"]/df[f"count"]
+
+
     del df["count"]
 
 
@@ -229,8 +233,58 @@ def add_general(df_ts, df_trade_date):
     df_ts["E_count"]=df_trade_date["E_count"].astype(int)
     df_ts["FD_count"]=df_trade_date["FD_count"].astype(int)
 
+
+@LB.deco_print_name
+def add_ts_holder_trade(df):
+    """
+            there are 3 ways to see what is the most relevant predictor
+
+            1. the amount of holders sell and buy(=count)
+            2. the amunt of values traded(vol X current price) does'nt work because price is not always public, not on tushare at least
+            3. ratio of the stocks beeing traded of all this companys share
+            """
+
+    df["count"] = 0
+    df["holder_trade"] = 0
+    df["holder_trade_ratio"] = 0
+
+    df_ts_code = DB.get_ts_code()
+    for ts_code in df_ts_code.index:
+        print(ts_code,"calc holder trade")
+        df_holder_trade = DB.get_asset(ts_code=ts_code, freq="holder_trade")
+        if df_holder_trade.empty:
+            continue
+
+        df_holder_trade.index = df_holder_trade.index.astype(int)
+        df_holder_trade["count"] = 1
+        df_holder_trade.index.name = "trade_date"
+
+        df_holder_trade.loc[df_holder_trade["in_de"] == "IN", "helper"] = 1
+        df_holder_trade.loc[df_holder_trade["in_de"] == "DE", "helper"] = -1
+        df_holder_trade.loc[df_holder_trade["in_de"] == "DE", "change_ratio"] = df_holder_trade.loc[df_holder_trade["in_de"] == "DE", "change_ratio"]* (-1)
+        df_holder_trade["index_helper"] = df_holder_trade.index
+
+        df_grouped_mean = df_holder_trade.groupby("index_helper").mean()
+        df_grouped_sum = df_holder_trade.groupby("index_helper").sum()
+
+        df["holder_trade"] = df["holder_trade"].add(df_grouped_mean["helper"], fill_value=0)
+        df["holder_trade_ratio"] = df["holder_trade_ratio"].add(df_grouped_sum["change_ratio"], fill_value=0)
+
+        df["count"] = df["count"].add(df_grouped_mean["count"], fill_value=0)
+
+    #df["holder_trade_ratio"] = df["holder_trade_ratio"]/df["count"]
+
+
+    df["holder_trade"] = df["holder_trade"].rolling(10).mean()
+    #df["holder_trade_ratio"] = df["holder_trade_ratio"].rolling(10).mean()
+    del df["count"]
+
+
+
 @LB.deco_print_name
 def add_ts_repurchase(df_result,df_trade_date):
+
+
     df_append=pd.DataFrame()
     df_trade_date = df_trade_date[df_trade_date.index > 20050101]
     for trade_date in df_trade_date.index:
@@ -239,6 +293,7 @@ def add_ts_repurchase(df_result,df_trade_date):
             continue
         df_append = df_append.append(df_date)
 
+    #add market cap
     df_group =df_append.groupby("ann_date").count()
     df_group.index = df_group.index.astype(int)
     df_group.index.name = "trade_date"
@@ -247,7 +302,7 @@ def add_ts_repurchase(df_result,df_trade_date):
     df_group["proc"] = df_group["proc"] / df_group["E_count"]
     df_group["count10"] = df_group["proc"].rolling(10).mean()
 
-    df_result["repurchase"]=df_group["count10"]
+    df_result["repurchase_count"]=df_group["count10"]
 
 
 def create_group_by_market(market="主板"):
@@ -328,17 +383,16 @@ def create_report( trade_date=20210525,step=1):
         add_ts_close(df_ts_master,ts_code='399001.SZ',asset="I")
         add_ts_close(df_ts_master,ts_code='399006.SZ',asset="I")
 
+        # 大宗交易 / block trade
         #df= ak.stock_dzjy_sctj()
         df_dzjy=ak.stock_dzjy_sctj()
         df_dzjy["交易日期"]=df_dzjy["交易日期"].astype(str).str.replace("-","")
         df_dzjy["交易日期"] = df_dzjy["交易日期"].astype(int)
         df_dzjy=df_dzjy.set_index("交易日期",drop=True)
-
-        #block trade
         df_ts_master["block_trade_premium"]=df_dzjy["溢价成交总额占比"]
         df_ts_master["block_trade_premium"]=df_ts_master["block_trade_premium"].rolling(10).mean()
 
-        #融资融券
+        #margin trade / 融资融券
         stock_margin_sse_df = ak.stock_margin_sse(start_date="00000000", end_date=trade_date)
         stock_margin_sse_df["信用交易日期"] = stock_margin_sse_df["信用交易日期"].astype(int)
         stock_margin_sse_df = stock_margin_sse_df.set_index("信用交易日期", drop=True)
@@ -347,6 +401,8 @@ def create_report( trade_date=20210525,step=1):
         #repurchase / 回购
         add_ts_repurchase(df_result=df_ts_master,df_trade_date=df_trade_date)
 
+        # holder trade / 大股东增减持
+        add_ts_holder_trade(df=df_ts_master)
 
 
         #http://data.eastmoney.com/zlsj/2021-03-31-2-2.html
@@ -420,4 +476,4 @@ def create_report( trade_date=20210525,step=1):
 
 trade_date=LB.today()
 #DB.update_all_in_one_cn(night_shift=True)
-create_report(step=2000,trade_date=trade_date)
+create_report(step=1,trade_date=trade_date)

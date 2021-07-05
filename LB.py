@@ -421,6 +421,7 @@ def c_asset_E_bundle_mini(asset="E"):
                 # financial
                 #"fina_indicator": _API_Tushare.my_fina_indicator,
                 "hk_hold": _API_Tushare.my_hk_hold,
+                "holder_trade": _API_Tushare.my_holder_trade,
                 #"pledge_stat": _API_Tushare.my_pledge_stat(),
 
                 }
