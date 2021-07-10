@@ -125,6 +125,22 @@ def add_ts_close(df,ts_code,asset):
     df_asset=DB.get_asset(ts_code=ts_code,asset=asset)
     df[f"close_{ts_code}"]=df_asset["close"]
 
+@LB.deco_print_name
+def add_ts_margin_buyin(df):
+        stock_margin_sse_df = ak.stock_margin_sse(start_date="00000000", end_date=trade_date)
+        stock_margin_sse_df["信用交易日期"] = stock_margin_sse_df["信用交易日期"].astype(int)
+        stock_margin_sse_df = stock_margin_sse_df.set_index("信用交易日期", drop=True)
+        df["融资买入额"] = stock_margin_sse_df["融资买入额"].rolling(20).mean()
+
+@LB.deco_print_name
+def add_ts_block_trade_premium(df):
+    df_dzjy = ak.stock_dzjy_sctj()
+    df_dzjy["交易日期"] = df_dzjy["交易日期"].astype(str).str.replace("-", "")
+    df_dzjy["交易日期"] = df_dzjy["交易日期"].astype(int)
+    df_dzjy = df_dzjy.set_index("交易日期", drop=True)
+    df["block_trade_premium"] = df_dzjy["溢价成交总额占比"]
+    df["block_trade_premium"] = df["block_trade_premium"].rolling(20).mean()
+
 
 @LB.deco_print_name
 def add_ts_copy(df, group, d_preload, name,col,a_clip=[]):
@@ -170,6 +186,31 @@ def add_ts_abvma(df, group, d_preload, freq, name):
     del df["count"]
 
 
+@LB.deco_print_name
+def add_ts_isminmax2(df, group, d_preload, freq, name):
+    d_preload={key:value for key,value in d_preload.items() if key in group}
+
+    df[f"ismax{freq}_{name}"] =0
+    df[f"ismin{freq}_{name}"] =0
+    df[f"count"] =0
+    for ts_code, df_asset in d_preload.items():
+        df_asset[f"ismax{freq}"]=(df_asset["isminmax"]==freq).astype(int)
+        df_asset[f"ismin{freq}"]=(df_asset["isminmax"]==-freq).astype(int)
+        df_asset[f"count"] = 1
+
+        df[f"ismax{freq}_{name}"]=df[f"ismax{freq}_{name}"].add(df_asset[f"ismax{freq}"],fill_value=0)
+        df[f"ismin{freq}_{name}"]=df[f"ismin{freq}_{name}"].sub(df_asset[f"ismin{freq}"],fill_value=0)
+        df[f"count"]=df[f"count"].add(df_asset['count'],fill_value=0)
+
+    df[f"ismax{freq}_{name}"] = df[f"ismax{freq}_{name}"]/df[f"count"]
+    df[f"ismin{freq}_{name}"] = df[f"ismin{freq}_{name}"]/df[f"count"]
+
+    df[f"isminmax{freq}_{name}"]=df[f"ismax{freq}_{name}"]+df[f"ismin{freq}_{name}"]
+    del df["count"]
+    del df[f"ismax{freq}_{name}"]
+    del df[f"ismin{freq}_{name}"]
+
+
 
 
 @LB.deco_print_name
@@ -204,6 +245,7 @@ def add_ts_isminmax(df, group, d_preload, name,freq,ismax=True):
 
 @LB.deco_print_name
 def add_ts_closerank(df, group, d_preload, name,freq):
+    """is same as abv ma when doing it for every stock but is slower"""
     def rollingRankArgsort(array):
         try:
             return  bd.rankdata(array)[-1]
@@ -235,22 +277,21 @@ def add_general(df_ts, df_trade_date):
 
 
 @LB.deco_print_name
-def add_ts_holder_trade(df):
+def add_ts_holder_trade(df,d_preload,group,name):
     """
-            there are 3 ways to see what is the most relevant predictor
+    there are 3 ways to see what is the most relevant predictor
 
-            1. the amount of holders sell and buy(=count)
-            2. the amunt of values traded(vol X current price) does'nt work because price is not always public, not on tushare at least
-            3. ratio of the stocks beeing traded of all this companys share
-            """
+    1. the amount of holders sell and buy(=count)
+    2. the amunt of values traded(vol X current price) does'nt work because price is not always public, not on tushare at least
+    3. ratio of the stocks beeing traded of all this companys share
+    """
+    d_preload = {key: value for key, value in d_preload.items() if key in group}
 
     df["count"] = 0
-    df["holder_trade"] = 0
-    df["holder_trade_ratio"] = 0
+    df[f"holder_trade_{name}"] = 0
+    df[f"holder_trade_ratio_{name}"] = 0
 
-    df_ts_code = DB.get_ts_code()
-    for ts_code in df_ts_code.index:
-        print(ts_code,"calc holder trade")
+    for ts_code,df_asset in d_preload.items():
         df_holder_trade = DB.get_asset(ts_code=ts_code, freq="holder_trade")
         if df_holder_trade.empty:
             continue
@@ -267,16 +308,13 @@ def add_ts_holder_trade(df):
         df_grouped_mean = df_holder_trade.groupby("index_helper").mean()
         df_grouped_sum = df_holder_trade.groupby("index_helper").sum()
 
-        df["holder_trade"] = df["holder_trade"].add(df_grouped_mean["helper"], fill_value=0)
-        df["holder_trade_ratio"] = df["holder_trade_ratio"].add(df_grouped_sum["change_ratio"], fill_value=0)
-
+        df[f"holder_trade_{name}"] = df[f"holder_trade_{name}"].add(df_grouped_mean["helper"], fill_value=0)
+        df[f"holder_trade_ratio_{name}"] = df[f"holder_trade_ratio_{name}"].add(df_grouped_sum["change_ratio"], fill_value=0)
         df["count"] = df["count"].add(df_grouped_mean["count"], fill_value=0)
 
-    #df["holder_trade_ratio"] = df["holder_trade_ratio"]/df["count"]
 
-
-    df["holder_trade"] = df["holder_trade"].rolling(10).mean()
-    #df["holder_trade_ratio"] = df["holder_trade_ratio"].rolling(10).mean()
+    df[f"holder_trade_{name}"] = df[f"holder_trade_{name}"].rolling(20).mean()
+    df[f"holder_trade_ratio_{name}"] = df[f"holder_trade_ratio_{name}"].rolling(20).mean()
     del df["count"]
 
 
@@ -368,58 +406,27 @@ def create_report( trade_date=20210525,step=1):
                 d_report[f"TP_{asset}_{col}"] = df_tp_grouped
 
 
-
-
     # TIME SERIES
     df_trade_date=DB.get_trade_date(end_date=str(trade_date))
     for asset in ["E"]:
+        # add general stuff
         df_ts_master = pd.DataFrame(index=df_trade_date.index.tolist())  # index is trade_date
-
-        #add general E count
         add_general(df_ts_master, df_trade_date=df_trade_date)
-
-        #aggregate by market
         add_ts_close(df_ts_master,ts_code='000001.SH',asset="I")
         add_ts_close(df_ts_master,ts_code='399001.SZ',asset="I")
         add_ts_close(df_ts_master,ts_code='399006.SZ',asset="I")
 
-        # 大宗交易 / block trade
-        #df= ak.stock_dzjy_sctj()
-        df_dzjy=ak.stock_dzjy_sctj()
-        df_dzjy["交易日期"]=df_dzjy["交易日期"].astype(str).str.replace("-","")
-        df_dzjy["交易日期"] = df_dzjy["交易日期"].astype(int)
-        df_dzjy=df_dzjy.set_index("交易日期",drop=True)
-        df_ts_master["block_trade_premium"]=df_dzjy["溢价成交总额占比"]
-        df_ts_master["block_trade_premium"]=df_ts_master["block_trade_premium"].rolling(10).mean()
+        # 大宗交易 / block trade todo make it for group
+        add_ts_block_trade_premium(df=df_ts_master)
 
-        #margin trade / 融资融券
-        stock_margin_sse_df = ak.stock_margin_sse(start_date="00000000", end_date=trade_date)
-        stock_margin_sse_df["信用交易日期"] = stock_margin_sse_df["信用交易日期"].astype(int)
-        stock_margin_sse_df = stock_margin_sse_df.set_index("信用交易日期", drop=True)
-        df_ts_master["融资买入额"] = stock_margin_sse_df["融资买入额"].rolling(10).mean()
+        # margin trade / 融资融券 todo make it for group
+        add_ts_margin_buyin(df=df_ts_master)
 
-        #repurchase / 回购
+        # repurchase / 回购 #TODO needs to rework to get ts_code and not by date
         add_ts_repurchase(df_result=df_ts_master,df_trade_date=df_trade_date)
 
-        # holder trade / 大股东增减持
-        add_ts_holder_trade(df=df_ts_master)
 
-
-        #http://data.eastmoney.com/zlsj/2021-03-31-2-2.html
-
-
-        ##人
-        #股东人数
-        #开户数量
-        #融资融券
-        #机构研报
-        #机构推荐
-        #机构持股
-        #北向资金
-        #股票讨论
-        #股票搜索
-        #股票关注
-
+        # define groups
         a_groups = [
             ["E", DB.get_ts_code(a_asset=["E"]).index.tolist()],
             ["主板", create_group_by_market("主板")],
@@ -427,53 +434,143 @@ def create_report( trade_date=20210525,step=1):
             ["创业板", create_group_by_market("创业板")],
                     ]
 
-
+        # for each group, create time series
         optional = False
-
-        # technical: Abv ma (ehlers ma)
-        # valuation: Pe_ttm (PEG)
-        # people: new registration
-        # institution: stock holding
-        # economy cycle: Time
         for ginfo in a_groups:
             df_ts=df_ts_master.copy()
+
+            # pgain = past gain / 过去freq的return
             for freq in [20,60,240]:
                 add_ts_copy(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"],col=f"pgain{freq}")
+
+            # amount / 成交额
+            add_ts_copy(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], col="amount")
+
+            # PE_ttm /市盈率
             add_ts_copy(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], col="pe_ttm", a_clip=[0,200])
 
-            add_ts_abvma(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=60)
+            # PB < 1 / 市净率
+            add_pb_ltone(df=df_ts, d_preload=d_preload_cache["E"], group=ginfo[1], name=ginfo[0])
+
+            # above MA / 在均线上
             add_ts_abvma(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=240)
-            #add_ts_abvma(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=500)
+
+            # isminmax / 是freq日最高最低
+            add_ts_isminmax2(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=240)
+
+            # margin trade / 融资融券
+            add_margin_trade(df=df_ts,d_preload=d_preload_cache["E"], group=ginfo[1], name=ginfo[0])
+
+            # holder trade / 大股东增减持   #http://data.eastmoney.com/zlsj/2021-03-31-2-2.html
+            add_ts_holder_trade(df=df_ts,d_preload=d_preload_cache["E"], group=ginfo[1], name=ginfo[0])
 
 
-            # add_ts_macd(df=df_ts, group=a_group_all[1],name=groupinfo[0], d_preload=d_preload_cache["E"], freq=240)
+            #todo add market trend switch
+            #TODO = 1/pe + r股权风险溢价
+            #Todo 北向资金 、 机构调研，情绪数据，股票讨论，关注，搜索
             # todo find a way to use other freq to boll and macd
             # todo is bolline contracting or expanding
+
+            # add_ts_macd(df=df_ts, group=a_group_all[1],name=groupinfo[0], d_preload=d_preload_cache["E"], freq=240)
+
             if optional:
                 add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=60)
                 add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=240)
                 add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=500)
-
                 add_ts_copy(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], col="boll")
 
-                add_ts_isminmax(df=df_ts, group=ginfo[1],name=ginfo[0], d_preload=d_preload_cache["E"], ismax=True, freq=20)
-                add_ts_isminmax(df=df_ts, group=ginfo[1],name=ginfo[0], d_preload=d_preload_cache["E"], ismax=True, freq=60)
-                add_ts_isminmax(df=df_ts, group=ginfo[1],name=ginfo[0], d_preload=d_preload_cache["E"], ismax=True, freq=240)
-                add_ts_isminmax(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], ismax=False, freq=20)
-                add_ts_isminmax(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], ismax=False, freq=60)
-                add_ts_isminmax(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], ismax=False, freq=240)
-
+            df_ts=df_ts[df_ts.index>20050101]
             d_report[f"TS_{ginfo[0]}"] =df_ts
 
+        #all these indicator X groups
 
     LB.to_excel(path=url,d_df=d_report)
 
 
+def create_diff():
+    d=[
+        ["000903.SH","000852.SH"],#大vs小
+        ["000117.SH", "000118.SH"],#成长
+        ["399407.SZ", "399406.SZ"],#波动
+        ["399704.SZ", "399706.SZ"],#上下游
+        ["399653.SZ", "000300.SH"],#龙头非龙头
+        ["399678.SZ", "000300.SH"],#次新
+        ["000063.SH", "000064.SH"],#周期
+    ]
+
+    df_trade_date = DB.get_trade_date()
+    for array in d:
+        name1=array[0]
+        name2=array[1]
+        df1 = DB.get_asset(name1, "I")
+        df2 = DB.get_asset(name2, "I")
+
+        df_trade_date[name1] = df1["close"]
+        df_trade_date[name2] = df2["close"]
+
+        df_trade_date[f"{name1}_pgain240"] = df1["pgain240"]
+        df_trade_date[f"{name2}_pgain240"] = df2["pgain240"]
+
+        df_trade_date[f"{name1}_pgain60"] = df1["pgain60"]
+        df_trade_date[f"{name2}_pgain60"] = df2["pgain60"]
+        df_trade_date[f"{name1}-{name2}diff"] = df_trade_date[f"{name1}_pgain240"] - df_trade_date[f"{name2}_pgain240"]
+        df_trade_date[f"{name1}-{name2}mean"] = df_trade_date[f"{name1}-{name2}diff"].rolling(240).mean()
+
+    df_trade_date.to_csv("test.csv")
+
+@LB.deco_print_name
+def add_pb_ltone(df, d_preload, group, name):
+    d_preload = {key: value for key, value in d_preload.items() if key in group}
+
+    df[f"pb_ltone_{name}"] = 0
+    df[f"count"] = 0
+    for ts_code, df_asset in d_preload.items():
+        df_asset[f"pb_ltone"] = (df_asset["pb"] < 1).astype(int)
+        df_asset[f"count"] = 1
+
+        df[f"pb_ltone_{name}"] = df[f"pb_ltone_{name}"].add(df_asset[f"pb_ltone"], fill_value=0)
+        df[f"count"] = df[f"count"].add(df_asset['count'], fill_value=0)
+
+    df[f"pb_ltone_{name}"] = df[f"pb_ltone_{name}"] / df[f"count"]
+    del df["count"]
+
+@LB.deco_print_name
+def add_margin_trade(df,d_preload,name,group):
+    d_preload = {key: value for key, value in d_preload.items() if key in group}
+
+    df[f"rzye_ratio_{name}"] = 0
+    df[f"count"] = 0
+    for ts_code, df_asset in d_preload.items():
+        df_asset_margin = DB.get_asset(ts_code=ts_code, freq=f"margin_detail")
+        df_asset_margin.index = df_asset_margin.index.astype(int)
+        if df_asset_margin.empty or df_asset.empty:
+            continue
+
+        df_asset["rzye"] = df_asset_margin["rzye"]
+        df_asset["rqye"] = df_asset_margin["rqye"]
+        df_asset[f"rzye_ratio"] = df_asset["rzye"] / df_asset["amount"] / 1000
+        df_asset[f"count"] = 1
+
+
+        df[f"rzye_ratio_{name}"] = df[f"rzye_ratio_{name}"].add(df_asset[f"rzye_ratio"], fill_value=0)
+        df[f"count"] = df[f"count"].add(df_asset['count'], fill_value=0)
+
+    for col in [f"rzye_ratio_{name}"]:
+        df[col] = df[col] / df[f"count"]
+        df[col] = df[col].rolling(20).mean()
+
+    del df["count"]
 
 
 
 
 
-trade_date=LB.today()
-#DB.update_all_in_one_cn(night_shift=True)
-create_report(step=1,trade_date=trade_date)
+
+
+
+
+if __name__ == '__main__':
+    trade_date=LB.today()
+    create_report(step=2)
+    #DB.update_all_in_one_cn(night_shift=True)
+    #create_report(step=1,trade_date=trade_date)

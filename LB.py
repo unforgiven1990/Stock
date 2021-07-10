@@ -394,7 +394,7 @@ def c_asset_E_bundle(asset="E"):
     if asset=="E":
         return {"block_trade": _API_Tushare.my_block_trade,
                 "holder_trade": _API_Tushare.my_holder_trade,
-                "margin_detail": _API_Tushare.my_margin_detail,
+
                 "top10_holders": _API_Tushare.my_top10_holders,
                 "suspended": _API_Tushare.my_suspended,
                 "dividend": _API_Tushare.my_dividend,
@@ -420,6 +420,7 @@ def c_asset_E_bundle_mini(asset="E"):
         return {
                 # financial
                 #"fina_indicator": _API_Tushare.my_fina_indicator,
+                "margin_detail": _API_Tushare.my_margin_detail,
                 "hk_hold": _API_Tushare.my_hk_hold,
                 "holder_trade": _API_Tushare.my_holder_trade,
                 #"pledge_stat": _API_Tushare.my_pledge_stat(),

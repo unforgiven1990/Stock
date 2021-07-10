@@ -15,6 +15,7 @@ import talib
 import glob
 
 
+
 pd.options.mode.chained_assignment = None  # default='warn'
 
 
@@ -1876,6 +1877,8 @@ def get_fast_load(ts_code,market="CN"):
     return fast_load[ts_code]
 
 
+def today():
+    return str(datetime.now().date()).replace("-", "")
 
 
 if __name__ == '__main__':
@@ -1885,9 +1888,10 @@ if __name__ == '__main__':
     pr = cProfile.Profile()
     pr.enable()
     try:
-        update_all_in_one_cn(until=999)
 
-
+        for asset in ["E"]:  # currently only hk hold and qdii hold
+            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
+                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": True, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
 
 
     except Exception as e:
