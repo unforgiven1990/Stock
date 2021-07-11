@@ -179,7 +179,7 @@ def update_trade_date(freq="D", market="CN", start_date="00000000", end_date=LB.
         LB.to_csv_feather(df, a_path, index_relevant=True)
 
 
-def update_ts_code(asset="E", market="CN", night_shift=True):
+def update_ts_code(asset="E", market="CN"):
     print("start update ts_code ", market, asset)
     if market == "CN":
         if asset == "E":
@@ -191,6 +191,7 @@ def update_ts_code(asset="E", market="CN", night_shift=True):
                 df[f"sw_industry{level}"] = df_member[f"sw_industry{level}"]
 
             # add JQ industry info for each stock
+            """
             for level in [1, 2]:
                 df_member = get_ts_code(a_asset=[f"jq_industry{level}"])
                 df_member = df_member[~df_member.index.duplicated(keep="first")]
@@ -200,6 +201,7 @@ def update_ts_code(asset="E", market="CN", night_shift=True):
             for level in [1]:
                 df_member = get_ts_code(a_asset=[f"zj_industry{level}"])
                 df[f"zj_industry{level}"] = df_member[f"zj_industry{level}"]
+            """
 
             # add concept
             df_concept = get_ts_code(a_asset=["concept"])
@@ -207,8 +209,7 @@ def update_ts_code(asset="E", market="CN", night_shift=True):
             df["concept"] = df_grouped_concept["concept"]
             df["concept_code"] = df_grouped_concept["code"]
 
-            # add State Government for each stock
-            df["state_company"] = False
+
             #for now exclude them
             """for ts_code in df.index:
                 print("update state_company", ts_code)
@@ -1793,72 +1794,55 @@ def update_all_in_one_hk(night_shift=False):
     LB.multi_process(func=update_asset_CNHK, a_kwargs={"market": "HK", "asset": "E", "freq": "D", "night_shift": False}, splitin=10)  # SMART
 
 
-def update_all_in_one_cn(night_shift=True, until=999):
-    # 0. ALWAYS UPDATE
-    # 1. ONLY ON BIG UPDATE: OVERRIDES EVERY THING EVERY TIME
-    # 2. ON BOTH BIG AND SMALL UPDATE: OVERRIDES EVERYTHING EVERY TIME
-    # 3. SMART: BIG OR SMALL UPDATE DOES NOT MATTER, ALWAYS CHECK IF FILE NEEDS TO BE UPDATED
+def update_all_in_one_cn(night_shift=True, do=[1,2,3]):
+    # general
+    if 1 in do:
+        # cal date always update
+        update_trade_cal()
 
-    # 1.0. ASSET - Indicator bundle (MANUALLY UPDATE)
+        # update ts_code industry
+        for asset in ["sw_industry1", "sw_industry2", "sw_industry3", "concept", ]:#"jq_industry1", "jq_industry2", "zj_industry1"
+            if night_shift: update_ts_code(asset)  # SOMETIMES UPDATE
 
-    if until<=0:
-        return print(f"update_all_in_one_cn2 finished until {until}")
+        # ts_code
+        for asset in ["I","E","FD","G",]:#"F" sometimes bug
+            update_ts_code(asset)  # ALWAYS UPDATE
 
-
-    # 1.0. ASSET - Indicator bundle
-
-    # E: update each E asset one after another
-    # E: hk_hold only 2 min limit
-    for asset in ["E","FD"]: #currently only hk hold and qdii hold
-        for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
-            LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": night_shift, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
-    update_repurchase()
-
-    if until <= 1:
-        return print(f"update_all_in_one_cn2 finished until {until}")
-
-    # 1.0. GENERAL - CAL_DATE
-    update_trade_cal()  # always update
-
-    for asset in ["sw_industry1", "sw_industry2", "sw_industry3", "concept", ]:#"jq_industry1", "jq_industry2", "zj_industry1"
-        if night_shift: update_ts_code(asset)  # SOMETIMES UPDATE
+        # trade_date (later than ts_code because it counts ts_codes)
+        for freq in ["D"]:  # Currently only update D and W, because W is needed for pledge stats
+            update_trade_date(freq)  # ALWAYS UPDATE
 
 
-    # # 1.3. GENERAL - TS_CODE
-    for asset in ["I","E","FD","G",]:#"F" sometimes bug
-        update_ts_code(asset)  # ALWAYS UPDATE
+    # asset
+    if 2 in do:
+        # asset_bundle - stored by asset
+        for asset in ["E", "FD"]:  # currently only hk hold and qdii hold
+            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
+                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": night_shift, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
 
-    # # 1.5. GENERAL - TRADE_DATE (later than ts_code because it counts ts_codes)
-    for freq in ["D"]:  # Currently only update D and W, because W is needed for pledge stats
-        update_trade_date(freq)  # ALWAYS UPDATE
+        # asset_bundle - stored by date
+        update_repurchase()
 
-    if until <= 2:
-        return print(f"update_all_in_one_cn2 finished until {until}")
-
-    # 2.2. ASSET
-    for asset in ["I","E","FD"]:
-        LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": night_shift, "miniver":False}, splitin=8)  # 40 mins
-    update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
-    update_important_index_weight()
-
-    # 2.3 OTHERS
-    update_asset_qdii()
-    update_hk_hsgt()
-
-    # 2.4 DATE
-    update_date(asset="E", freq="D")
-    update_date(asset="FD", freq="D")
-
-    if until <= 3:
-        return print(f"update_all_in_one_cn finished until {until}")
+        #for old report but not for new report anymore
+        #update_asset_qdii()
+        #update_hk_hsgt()
+        #Atest.asset_fund_portfolio()
 
 
-    # 2.3 UPDATE FUND HOLDING
-    if night_shift:
-        import Atest
-        Atest.asset_fund_portfolio()
-    if until <= 4:
-        return print(f"update_all_in_one_cn finished until {until}")
+        # 2.2. ASSET freq =D
+        for asset in ["I","E","FD"]:
+            LB.multi_process(func=update_asset_CNHK, a_kwargs={"asset": asset, "freq": "D", "market": "CN", "night_shift": night_shift, "miniver":False}, splitin=8)  # 40 mins
+        update_asset_G(night_shift=night_shift)  # update concept is very very slow. = Night shift
+        update_important_index_weight()
+
+
+
+    # date
+    if 3 in do:
+        # 2.4 DATE
+        update_date(asset="E", freq="D")
+        update_date(asset="FD", freq="D")
+
 
 
 
@@ -1889,10 +1873,7 @@ if __name__ == '__main__':
     pr.enable()
     try:
 
-        for asset in ["E"]:  # currently only hk hold and qdii hold
-            for counter, (bundle_name, bundle_func) in enumerate(LB.c_asset_E_bundle_mini(asset=asset).items()):
-                LB.multi_process(func=update_asset_bundle, a_kwargs={"bundle_name": bundle_name, "bundle_func": bundle_func, "night_shift": True, "a_asset": [asset]}, splitin=4)  # SMART does not alternate step, but alternates fina_name+fina_function
-
+        update_all_in_one_cn(night_shift=True,do=[2])
 
     except Exception as e:
         traceback.print_exc()

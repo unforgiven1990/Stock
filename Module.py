@@ -579,6 +579,7 @@ def add_margin_trade(df,d_preload,name,group):
 
 if __name__ == '__main__':
     trade_date=LB.today()
-    create_report(step=1)
+    print("test")
+    #create_report(step=1)
     #DB.update_all_in_one_cn(night_shift=True)
     #create_report(step=1,trade_date=trade_date)

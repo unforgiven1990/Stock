@@ -1329,7 +1329,10 @@ def asset_volatility(start_date, end_date, assets, freq):
 """very slow, this can be done AFTER report or in midnight"""
 def asset_fund_portfolio():
     """
+    can now be replaced by 东方财富terminal
     this function creates a statistic about the most hold stock by fund
+
+
 
     1. at all time
     2. at current time

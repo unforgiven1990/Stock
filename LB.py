@@ -350,7 +350,6 @@ def c_group_score_weight():
             "market": 0.40,
             "sw_industry1": 0.20,
             "sw_industry2": 0.20,
-            "state_company": 0.05,
             "is_hs": 0.05}  # "sw_industry3": 0.20,
 
 
@@ -418,12 +417,12 @@ def c_asset_E_bundle(asset="E"):
 def c_asset_E_bundle_mini(asset="E"):
     if asset=="E":
         return {
-                # financial
                 #"fina_indicator": _API_Tushare.my_fina_indicator,
                 "margin_detail": _API_Tushare.my_margin_detail,
                 "hk_hold": _API_Tushare.my_hk_hold,
                 "holder_trade": _API_Tushare.my_holder_trade,
-                #"pledge_stat": _API_Tushare.my_pledge_stat(),
+                "pledge_stat": _API_Tushare.my_pledge_stat,
+                "block_trade": _API_Tushare.my_block_trade,
 
                 }
 
@@ -515,7 +514,7 @@ def c_d_groups(assets=c_assets(), a_ignore=[], market="CN"):
     if "E" in assets:
         df_ts_code_E = DB.get_ts_code(["E"], market=market)
         if market == "CN":
-            a_columns = [x for x in df_ts_code_E.columns if x in ["sw_industry1", "sw_industry2", "sw_industry3", "zj_industry1", "jq_industry1", "jq_industry2", "area", "market", "is_hs", "state_company", "concept"]]
+            a_columns = [x for x in df_ts_code_E.columns if x in ["sw_industry1", "sw_industry2", "sw_industry3", "zj_industry1", "jq_industry1", "jq_industry2", "area", "market", "is_hs", "concept"]]
         elif market =="US":
             a_columns = [x for x in df_ts_code_E.columns if x in ["sector", "industry", "country"]]
         elif market =="HK":
