@@ -144,8 +144,6 @@ def add_ts_block_trade_premium(df):
 
 @LB.deco_print_name
 def add_ts_copy(df, group, d_preload, name,col,a_clip=[]):
-
-
     d_preload={key:value for key,value in d_preload.items() if key in group}
 
     df[f"{col}_{name}"] =0
@@ -163,7 +161,6 @@ def add_ts_copy(df, group, d_preload, name,col,a_clip=[]):
         except:
             pass
     df[f"{col}_{name}"] = df[f"{col}_{name}"]/df[f"count"]
-
 
     del df["count"]
 
@@ -269,9 +266,9 @@ def add_ts_closerank(df, group, d_preload, name,freq):
 
 @LB.deco_print_name
 def add_general(df_ts, df_trade_date):
-    df_ts["lastdayofmonth"]=df_trade_date["lastdayofmonth"].astype(int)
-    df_ts["lastdayofseason"]=df_trade_date["lastdayofseason"].astype(int)
-    df_ts["lastdayofseason"]=df_trade_date["lastdayofseason"].astype(int)
+    #df_ts["lastdayofmonth"]=df_trade_date["lastdayofmonth"].astype(int)
+    #df_ts["lastdayofseason"]=df_trade_date["lastdayofseason"].astype(int)
+    #df_ts["lastdayofseason"]=df_trade_date["lastdayofseason"].astype(int)
     df_ts["E_count"]=df_trade_date["E_count"].astype(int)
     df_ts["FD_count"]=df_trade_date["FD_count"].astype(int)
 
@@ -347,6 +344,18 @@ def create_group_by_market(market="主板"):
     df_ts_code=DB.get_ts_code(a_asset=["E"])
     df_ts_code=df_ts_code[df_ts_code["market"]==market]
     return df_ts_code.index.tolist()
+
+def create_group_longtou(df_tp, industry="sw_industry2",n=1):
+    #for each sw Lv2 industry, select the n largest stock
+    a_result=[]
+
+    for specific_industry in df_tp[industry].unique():
+        df_filter=df_tp[df_tp[industry]==specific_industry]
+        df_filter=df_filter["total_mv"].nlargest(n=n)
+        a_result+=df_filter.index.tolist()
+    print(a_result)
+    return a_result
+
 
 def create_report( trade_date=20210525,step=1):
     url=fr"Market/CN/ATest/Module/report_{trade_date}.xlsx"
@@ -432,10 +441,10 @@ def create_report( trade_date=20210525,step=1):
             ["主板", create_group_by_market("主板")],
             ["中小板", create_group_by_market("中小板")],
             ["创业板", create_group_by_market("创业板")],
+            ["龙头股", create_group_longtou(d_report[f"TP_E"])],
                     ]
 
         # for each group, create time series
-        optional = False
         for ginfo in a_groups:
             df_ts=df_ts_master.copy()
 
@@ -464,20 +473,19 @@ def create_report( trade_date=20210525,step=1):
             # holder trade / 大股东增减持   #http://data.eastmoney.com/zlsj/2021-03-31-2-2.html
             add_ts_holder_trade(df=df_ts,d_preload=d_preload_cache["E"], group=ginfo[1], name=ginfo[0])
 
-
             #todo add market trend switch
             #TODO = 1/pe + r股权风险溢价
             #Todo 北向资金 、 机构调研，情绪数据，股票讨论，关注，搜索
             # todo find a way to use other freq to boll and macd
             # todo is bolline contracting or expanding
 
-            # add_ts_macd(df=df_ts, group=a_group_all[1],name=groupinfo[0], d_preload=d_preload_cache["E"], freq=240)
-
-            if optional:
-                add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=60)
-                add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=240)
-                add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=500)
-                add_ts_copy(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], col="boll")
+            """
+            add_ts_macd(df=df_ts, group=a_group_all[1], name=groupinfo[0], d_preload=d_preload_cache["E"], freq=240)
+            add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=60)
+            add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=240)
+            add_ts_closerank(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], freq=500)
+            add_ts_copy(df=df_ts, group=ginfo[1], name=ginfo[0], d_preload=d_preload_cache["E"], col="boll")
+            """
 
             df_ts=df_ts[df_ts.index>20050101]
             d_report[f"TS_{ginfo[0]}"] =df_ts
@@ -571,6 +579,6 @@ def add_margin_trade(df,d_preload,name,group):
 
 if __name__ == '__main__':
     trade_date=LB.today()
-    create_report(step=2)
+    create_report(step=1)
     #DB.update_all_in_one_cn(night_shift=True)
     #create_report(step=1,trade_date=trade_date)
